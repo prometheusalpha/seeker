@@ -20,7 +20,7 @@ Nguồn: `../recall` (Electrobun + Bun + Vue, ~33k dòng, 16 file test bun). Đ�
 10. mygo dùng fork `../mygo` qua `replace`. Ảo hoá cột và cột ghim của `ui.Table` là **option opt-in**, không hard code, không bắt buộc.
 11. Thứ tự: M1 trước, việc trong fork (F1, F2) sau, ngay trước phase cần nó.
 12. Identifier `io.starchaser.seeker` (`mygo.json`). `PathUserData` đi theo nó: không đổi nữa sau khi có dữ liệu thật.
-13. Git: repo `seeker`, remote `origin` = `https://github.com/prometheusalpha/seeker.git`.
+13. Git: repo `seeker`, remote `origin` = `git@github.com:prometheusalpha/seeker.git`.
 
 ## 2. Quyết định còn mở
 

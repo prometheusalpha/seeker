@@ -1,0 +1,6 @@
+{
+  "name": "Seeker",
+  "identifier": "io.starchaser.seeker",
+  "version": "0.1.0",
+  "out": "build"
+}

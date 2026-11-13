@@ -85,7 +85,7 @@ func mustQuery(t *testing.T, s string) url.Values {
 
 func TestMySQLConfig(t *testing.T) {
 	p := model.Profile{Host: "127.0.0.1", Port: 3306, Username: "root",
-		URLParams: "allowPublicKeyRetrieval=false&parseTime=true&multiStatements=true&charset=utf8mb4&sql_mode=ANSI"}
+		URLParams: "allowPublicKeyRetrieval=true&parseTime=true&multiStatements=true&charset=utf8mb4&sql_mode=ANSI"}
 	cfg, err := mysqlConfig(p, "pw", " ")
 	if err != nil {
 		t.Fatal(err)
@@ -109,6 +109,14 @@ func TestMySQLConfig(t *testing.T) {
 	p.URLParams = "ssl-mode=require"
 	if cfg, _ := mysqlConfig(p, "", ""); cfg.TLS == nil || !cfg.TLS.InsecureSkipVerify {
 		t.Fatal("require encrypts without verifying")
+	}
+	p.URLParams = "allowPublicKeyRetrieval=false"
+	if cfg, _ := mysqlConfig(p, "", ""); cfg.TLS == nil || cfg.TLS.InsecureSkipVerify {
+		t.Fatal("refusing key retrieval means TLS that verifies the server")
+	}
+	p.URLParams = "allowPublicKeyRetrieval=false&ssl-mode=verify-ca"
+	if cfg, _ := mysqlConfig(p, "", ""); cfg.TLS == nil || cfg.TLS.VerifyPeerCertificate == nil {
+		t.Fatal("a chosen verify-ca is kept")
 	}
 	p.URLParams = "ssl-mode=verify-full"
 	if cfg, _ := mysqlConfig(p, "", ""); cfg.TLS == nil || cfg.TLS.InsecureSkipVerify || cfg.TLS.ServerName != "127.0.0.1" {

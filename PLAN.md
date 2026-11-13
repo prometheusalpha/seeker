@@ -157,8 +157,8 @@ Kết quả (đã làm, khác recall ở đâu):
 - Cancel giữ session: PG dùng `CancelRequestContextWatcherHandler` (cắt socket sau 5s nếu server không trả lời); MySQL chạy query không gắn ctx, cancel bằng `KILL QUERY` từ connection thứ hai. `SELECT SLEEP()` bị kill trả 1 chứ không lỗi.
 - Giá trị ô: `nil` / `string` (text của server) / `[]byte` (bytea, BLOB, VARBINARY…). go-sql-driver tự parse số kể cả text protocol: số nguyên in lại y nguyên, float in dạng ngắn nhất của Go (`1e+21` thay vì `1e21`).
 - Kiểu cột: PG = `format_type` (giống `pg_typeof` của recall, cache theo session); MySQL = `DatabaseTypeName()` (`TIMESTAMP`, `VARCHAR`…), recall thì đoán từ giá trị.
-- MySQL `TIMESTAMP`: driver nối offset của session (`+07:00`) vào text, hỏi sau mỗi statement có cột TIMESTAMP (1 round trip). Zone có DST thì là offset hôm nay.
-- `allowPublicKeyRetrieval=false` **không làm được**: go-sql-driver luôn tự lấy RSA key, không có công tắc. Param bị bỏ qua (không gửi thành system variable).
+- MySQL `TIMESTAMP`: driver nối offset của session (`+07:00`) vào text. Offset đọc một lần lúc mở session, đọc lại sau statement có chữ `time_zone`; zone đổi trong procedure thì không biết. Zone có DST thì là offset hiện tại.
+- `allowPublicKeyRetrieval=false`: go-sql-driver luôn tự lấy RSA key, không có công tắc, nên đổi nghĩa thành **bắt buộc TLS verify-full** (giữ verify-ca nếu profile chọn): login không cần xin key, và chặn được MITM như ý định gốc. Server cert tự ký thì từ chối (đã test).
 - `queryTimeoutSecs` recall không dùng ở backend → không áp. `connectTimeoutSecs` áp cho cả PG và MySQL (mặc định 30).
 - Explain: MySQL 8.4 với `explain_json_format_version=2` để cây ở gốc document (không có `query_plan`); recall không nhận ra và vẽ một node rỗng. Seeker nhận cả ba dạng.
 - `formatCell` dùng `FixedZone(+07)` thay vì `Asia/Bangkok` (ngày trước 1920 recall lệch LMT nhưng vẫn ghi `+07`). `sqlInsert` ghi binary dạng hex (`X'..'`, `'\x..'`), recall ghi chuỗi base64 → insert sai byte.

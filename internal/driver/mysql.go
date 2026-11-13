@@ -27,6 +27,9 @@ type myConn struct {
 	conn     *sql.Conn
 	database string
 	threadID int64
+	// zone is the session's UTC offset, as +07:00, appended to TIMESTAMP
+	// text. Read on open and again after a statement naming time_zone.
+	zone string
 
 	mu     sync.Mutex
 	closed bool
@@ -50,6 +53,7 @@ func openMySQL(ctx context.Context, p model.Profile, password, database string) 
 	if err == nil {
 		c := &myConn{db: db, conn: conn, database: database}
 		if err = conn.QueryRowContext(ctx, "SELECT CONNECTION_ID()").Scan(&c.threadID); err == nil {
+			c.readZone(ctx)
 			return c, nil
 		}
 		conn.Close()
@@ -65,10 +69,13 @@ func openMySQL(ctx context.Context, p model.Profile, password, database string) 
 // shift. multiStatements stays off because Execute splits the script
 // itself.
 //
-// go-sql-driver always fetches the server's RSA key for a caching_sha2
-// login without TLS and has no switch for it, so recall's
-// allowPublicKeyRetrieval=false opt-out cannot be honoured; the param is
-// only kept from being sent as a system variable.
+// recall's allowPublicKeyRetrieval=false refuses a caching_sha2 login that
+// would fetch the server's RSA key over plain TCP, where a man in the
+// middle can hand over its own key and read the password. go-sql-driver
+// always fetches it and has no switch, so the opt-out becomes TLS that
+// verifies the server: the login then never asks for the key, and an
+// unverified TLS would leave the same man in the middle. A verify-ca the
+// profile chose is kept.
 func mysqlConfig(p model.Profile, password, database string) (*mysql.Config, error) {
 	cfg := mysql.NewConfig()
 	cfg.User, cfg.Passwd = p.Username, password
@@ -87,11 +94,13 @@ func mysqlConfig(p model.Profile, password, database string) (*mysql.Config, err
 	if p.SSL {
 		tlsMode = "preferred"
 	}
+	keyRetrieval := true
 	var ca, cert, key string
 	for _, kv := range ParseURLParams(p.URLParams) {
 		k, v := kv[0], strings.TrimSpace(kv[1])
 		switch k {
 		case "allowPublicKeyRetrieval":
+			keyRetrieval = mysqlTrue[strings.ToLower(v)]
 		case "ssl", "ssl-mode", "sslmode", "tls":
 			tlsMode = strings.ToLower(v)
 		case "ssl-ca":
@@ -114,8 +123,13 @@ func mysqlConfig(p model.Profile, password, database string) (*mysql.Config, err
 			cfg.Params[k] = v
 		}
 	}
+	if !keyRetrieval && tlsMode != "verify-ca" && tlsMode != "verify_ca" {
+		tlsMode = "verify-full"
+	}
 	return cfg, applyMySQLTLS(cfg, tlsMode, ca, cert, key)
 }
+
+var mysqlTrue = map[string]bool{"1": true, "true": true, "yes": true, "on": true}
 
 func mysqlParam(k, v string) mysql.Option {
 	return func(c *mysql.Config) error {
@@ -685,6 +699,9 @@ func (c *myConn) run(ctx context.Context, q string, maxRows int) ([]Column, [][]
 		return nil, nil, 0, false, err
 	}
 	rows.Close()
+	if strings.Contains(strings.ToLower(q), "time_zone") {
+		c.readZone(bg)
+	}
 	if len(cols) == 0 {
 		// A statement without a result set: its count is the session's
 		// ROW_COUNT(), which nothing else has run on since.
@@ -695,24 +712,35 @@ func (c *myConn) run(ctx context.Context, q string, maxRows int) ([]Column, [][]
 		return nil, nil, 0, false, nil
 	}
 	if stamp >= 0 {
-		c.zoneTimestamps(bg, cols, out)
+		c.zoneTimestamps(cols, out)
 	}
 	return cols, out, int64(len(out)), truncated, nil
 }
 
-// zoneTimestamps appends the session's UTC offset to TIMESTAMP text. The
-// server stores those as UTC and prints them in the session's zone without
-// saying which, so the offset is asked for now, after the statement, in
-// case the statement was a SET time_zone. A zone with DST makes this the
-// offset of today, not of each value.
-func (c *myConn) zoneTimestamps(ctx context.Context, cols []Column, rows [][]any) {
+// readZone asks for the session's UTC offset. TIMESTAMP is stored as UTC
+// and printed in the session's zone without saying which. Any statement
+// naming time_zone may have changed it (SET time_zone, SET @@session…),
+// so run calls this again after one; a zone set inside a procedure goes
+// unnoticed. With DST this is the offset of now, not of each value. On
+// failure the offset stays unknown and TIMESTAMPs are left as printed.
+func (c *myConn) readZone(ctx context.Context) {
 	var diff string
 	if err := c.conn.QueryRowContext(ctx, "SELECT TIME_FORMAT(TIMEDIFF(NOW(), UTC_TIMESTAMP()), '%H:%i')").Scan(&diff); err != nil {
+		c.zone = ""
 		return
 	}
-	offset := diff
+	c.zone = diff
 	if !strings.HasPrefix(diff, "-") {
-		offset = "+" + diff
+		c.zone = "+" + diff
+	}
+}
+
+// zoneTimestamps appends the session's offset to TIMESTAMP text, so it
+// reads as an instant like Postgres timestamptz.
+func (c *myConn) zoneTimestamps(cols []Column, rows [][]any) {
+	offset := c.zone
+	if offset == "" {
+		return
 	}
 	for i, col := range cols {
 		if col.Type != "TIMESTAMP" {

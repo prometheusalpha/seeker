@@ -48,6 +48,11 @@ func TestMySQLExecute(t *testing.T) {
 	if e := rs[5].Err; e == nil || e.Code != "1054" || e.Offset != -1 {
 		t.Fatalf("error %+v", e)
 	}
+	// A new session reads its zone on open; the compose server runs in UTC.
+	fresh := liveConn(t, model.MySQL)
+	if rs := run(t, fresh, "select ts from seeker_x where id = 1"); rs[0].Rows[0][0] != "2026-01-01 06:15:00.654321+00:00" {
+		t.Fatalf("fresh session: %#v", rs[0].Rows)
+	}
 	r := c.Execute(context.Background(), "select 1 union all select 2 union all select 3", 2, nil)[0]
 	if len(r.Rows) != 2 || !r.Truncated {
 		t.Fatalf("cap: %d rows, truncated %v", len(r.Rows), r.Truncated)
@@ -120,6 +125,18 @@ func TestMySQLCachingSha2(t *testing.T) {
 		"grant all on "+db+".* to seeker_sha2@'%'; flush privileges"))
 	t.Cleanup(func() { run(t, admin, "drop user if exists seeker_sha2@'%'") })
 	p.Username = "seeker_sha2"
+	refused := p
+	refused.URLParams = "allowPublicKeyRetrieval=false"
+	// The compose server's certificate is self-signed, so the verifying TLS
+	// the opt-out asks for must refuse it rather than fall back.
+	c, err := Open(context.Background(), refused, "pw", db)
+	if err == nil {
+		c.Close()
+		t.Fatal("allowPublicKeyRetrieval=false logged in without verified TLS")
+	}
+	if !strings.Contains(err.Error(), "certificate") {
+		t.Fatalf("refused for another reason: %v", err)
+	}
 	for _, database := range []string{db, ""} {
 		c, err := Open(context.Background(), p, "pw", database)
 		if err != nil {

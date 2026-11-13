@@ -109,13 +109,21 @@ func (p *Pool) Connect(ctx context.Context, prof model.Profile, password string)
 		conn.Close()
 		return driver.ServerInfo{}, err
 	}
+	p.Adopt(prof, password, conn)
+	return info, nil
+}
+
+// Adopt registers an open, pinged session as the profile's catalog session,
+// in the place of the profile's sessions. The caller owns conn until it is
+// adopted, so a connect a cancel made stale closes it there instead of
+// landing in the pool after Disconnect.
+func (p *Pool) Adopt(prof model.Profile, password string, conn driver.Conn) {
 	p.Disconnect(prof.ID)
 	p.mu.Lock()
 	p.profiles[prof.ID] = profile{prof, password}
 	s := p.slotLocked(key{conn: prof.ID, database: prof.Database}, catalogSessions)
 	s.sessions = append(s.sessions, &session{conn: conn, idleSince: time.Now()})
 	p.mu.Unlock()
-	return info, nil
 }
 
 // Disconnect closes every session of the profile and forgets it.

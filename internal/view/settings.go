@@ -6,9 +6,10 @@ import (
 	"seeker/internal/theme"
 )
 
-func (a *App) settingsDialog(c *ui.Context) {
+func (s *App) settingsDialog(c *ui.Context) {
 	t := c.Theme()
-	ui.Modal(c, &a.settingsOpen, func() {
+	u := s.core.UI()
+	ui.Modal(c, &s.settingsOpen, func() {
 		ui.Column(c).Width(420).Padding(20).Gap(14).Children(func() {
 			ui.Text(c, "Settings").FontSize(16).Bold()
 			field := func(label string, control func()) {
@@ -18,25 +19,25 @@ func (a *App) settingsDialog(c *ui.Context) {
 				})
 			}
 			field("Appearance", func() {
-				ui.Segmented(c, &a.appearance, "System", "Light", "Dark").Label("Appearance").FillEqually()
+				ui.Segmented(c, &s.appearance, "System", "Light", "Dark").Label("Appearance").FillEqually()
 			})
 			field("Light theme", func() {
-				ui.Select(c, &a.settings.Light, theme.LightThemes).FillWidth().Label("Light theme")
+				ui.Select(c, &u.Theme.Light, theme.LightThemes).FillWidth().Label("Light theme")
 			})
 			field("Dark theme", func() {
-				ui.Select(c, &a.settings.Dark, theme.DarkThemes).FillWidth().Label("Dark theme")
+				ui.Select(c, &u.Theme.Dark, theme.DarkThemes).FillWidth().Label("Dark theme")
 			})
 			field("Accent", func() {
-				ui.Select(c, &a.settings.Accent, theme.Accents).FillWidth().Label("Accent")
+				ui.Select(c, &u.Theme.Accent, theme.Accents).FillWidth().Label("Accent")
 			})
-			if !a.settings.HasAccent(a.systemDark) {
+			if !u.Theme.HasAccent(s.systemDark) {
 				ui.Text(c, "Accent applies to Catppuccin themes; the default themes follow the system's accent.").
 					FontSize(11).TextColor(t.TextMuted)
 			}
 			ui.Row(c).FillWidth().Children(func() {
 				ui.Spacer(c)
 				if ui.Button(c, "Done").Clicked() {
-					a.settingsOpen = false
+					s.settingsOpen = false
 				}
 			})
 		})

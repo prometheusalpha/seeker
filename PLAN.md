@@ -205,7 +205,7 @@ Phạm vi:
 Nguồn: `App.vue`, `sidebar/ConnectionTree.vue` (1590), `TreeRow.vue`, `AppSidebar.vue`, `composables/useFlatTree`, `dialogs/ConnectionDialog.vue`, `ConnectionFormFields.vue`, `DatabaseVisibilityDialog.vue`, `lib/connectionDefaults.ts`, `stores/connections.ts`, `stores/tabs.ts`, `workspace/TabStrip.vue`, `useTabClose`, `TabCloseDialog.vue`, `src/bun/menu.ts`, `index.ts`.
 
 What should know:
-- Tab của recall: `id, title, connectionId, database, schema, table, mode (sql/table/redis), sql, path, savedSql, pinned` + `closed[]`, `dirtyIds`. Validate từng field khi đọc lại.
+- Tab của recall: `id, title, connectionId, database, schema, table, mode (sql/table/redis; seeker lưu `query`/`table`, `redis` thêm ở M7), sql, path, savedSql, pinned` + `closed[]`, `dirtyIds`. Validate từng field khi đọc lại.
 - `testConnection` trả kết quả dạng data, không throw.
 - `savePassword` false: chỉ giữ mật khẩu trong phiên.
 - Recall TODO Phase 2: khi mở dropdown table thì không load vội, chỉ load nhóm khi mở nhóm đó (FK và trigger load rất chậm).
@@ -218,6 +218,19 @@ Gotchas:
 - Lỗi recall Phase 1 cần tránh lặp lại: "no open connection for id" khi mở app với tab đang trỏ tới connection chưa mở → tab phải tự mở connection khi cần.
 
 Xong khi: mở app thấy connections đã import, kết nối PG/MySQL thật, duyệt tới cột/index, đóng mở tab, khởi động lại vẫn giữ tab và theme.
+
+Kết quả (đã làm, chờ anh test trong app rồi mới tick):
+- State nằm ở package mới `internal/app` (không phải `view`), view chỉ đọc và gọi. Store mở ở `PathUserData`; lần chạy `mygo dev` đầu tiên import 4 connection thật từ `recall.db` và ghi `imported.recall`. Theme, layout và tabs lưu vào bảng `settings`, đọc lại sau khi khởi động (có test).
+- Outline gọi `children` cho mọi row đang hiện để biết row có mũi tên, nên `Children` thật sẽ kết nối mọi profile ngay frame đầu. View bọc lại (`treeChildren`): row đóng trả slice rỗng, row mở mới gọi app. Không có nó thì mở app là dial hết server.
+- Lọc là server-side (`listTables(filter)`), debounce 250ms, gen tăng ngay khi gõ; kết quả về muộn bị bỏ. Pin sort lên đầu danh sách anh em, không có section riêng (recall).
+- Cancel connect: thêm `pool.Adopt` để goroutine connect tự đóng session nếu bị huỷ; huỷ thì cache danh sách rỗng cho row, không tự thử lại cho tới khi đóng rồi mở lại row (giống recall). Row lỗi cũng retry theo cách đó.
+- Tab: dedupe path-first, partition pinned, kéo thả bằng `Drag`/`Drop`, menu Rename/Pin/Close others/Close/Close all, `⌘W`, `⌘⇧W`, `⌘⌥W`, `⌘⇧T`, `⌘⌥←/→`; hộp xác nhận tab bẩn dùng chung một dialog; stack mở lại tab đã đóng (recall không có, plan yêu cầu) giữ 20 tab.
+- Dialog connection: field theo engine, chọn TLS ghi thẳng vào `urlParams` và `ssl`, test connection, lưu mật khẩu. Save đóng dialog ngay rồi mới handshake, lỗi hiện ở tooltip của row; recall giữ dialog mở và hiện lỗi trong form.
+- Dialog Databases: list từ server, database của profile không ẩn được, mỗi lần gạt lưu ngay.
+- Chưa làm trong M2: panel SQL files (M5), Run/Format/Explain để disabled kèm tooltip (M3/M6), vùng kết quả còn trống (M4), xoá connection (recall không có UI), đóng cửa sổ không chặn tab bẩn.
+- Sửa sau review (có test trong `internal/app`, `internal/view`): edit connection MySQL không còn reset port/user/params/TLS; appearance Light/Dark được giữ sau restart; Save khoá khi password còn đang load và không ghi đè keychain bằng chuỗi rỗng khi đọc keychain fail; password của phiên ưu tiên hơn keychain khi connect; connection mới giữ `draftID` nên Test không để lại keychain item mồ côi (Cancel xoá item); `Close` flush các write đang debounce; `Reconnect` đóng session cũ trước khi connect; tab active được restore tự connect khi `Attach`.
+- Sửa thêm (nhẹ): unpin trả bảng về thứ tự server; kéo tab qua đường phân cách pinned thì pin/unpin; connection lost hiện dòng lỗi thay vì tự reconnect im lặng; Discard không sống lại khi mở lại tab; Close others/all chờ hộp thoại rồi mới đóng tab sạch; kết quả Test cũ không rơi vào dialog mới.
+- Test: đi hết cây trên PG thật và MySQL thật, đi hết click path trên `ui.Tester` (connect, mở database/schema/table, pin, drag tab, dialog đóng tab, dialog connection, dialog databases), cancel connect với listener treo, restart giữ theme/tab.
 
 ### M3: SQL editor
 

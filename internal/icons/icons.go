@@ -21,13 +21,16 @@ func load(name string) *ui.SVG {
 
 var (
 	ChevronDown  = load("chevron-down")
+	ChevronsUp   = load("chevrons-up")
 	Columns      = load("columns-3")
 	Database     = load("database")
 	Download     = load("download")
+	Eye          = load("eye")
 	FileCode     = load("file-code")
 	Folder       = load("folder")
 	FolderTree   = load("folder-tree")
 	Key          = load("key-round")
+	Link         = load("link")
 	ListTree     = load("list-tree")
 	Moon         = load("moon")
 	PanelLeft    = load("panel-left")
@@ -41,4 +44,5 @@ var (
 	Table        = load("table-2")
 	WandSparkles = load("wand-sparkles")
 	X            = load("x")
+	Zap          = load("zap")
 )

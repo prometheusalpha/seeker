@@ -1,15 +1,15 @@
 // Package view builds seeker's window: a title bar over islands, rounded
-// panels floating on the window's canvas, for the sidebar, the editor,
-// the results and the SQL files.
+// panels floating on the window's canvas, for the sidebar, the editor and
+// the results.
 package view
 
 import (
-	"path"
-	"strings"
+	"slices"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
+	"seeker/internal/app"
 	"seeker/internal/icons"
 	"seeker/internal/theme"
 )
@@ -22,88 +22,53 @@ const (
 
 type palette = theme.Islands
 
-type tab struct {
-	title string
-	table bool
-	dirty bool
-}
-
 type App struct {
-	settings     theme.Settings
-	appearance   int // index into appearances, bound to the settings' segmented control
+	core *app.App
+
+	// One buffer until M3 gives each tab its own.
+	code    *editor.State
+	codeTab string
+	codeVer uint64
+
+	appearance   int
 	settingsOpen bool
 	systemDark   bool
 
-	sidebarW    float32
-	filesW      float32
-	editorPct   float32
-	hideSidebar bool
-	hideFiles   bool
-
-	treeSearch string
-	tree       ui.OutlineState[string]
-	treeRow    int
-	files      ui.OutlineState[string]
-	fileRow    int
-
-	tabs   []tab
-	active int
-	code   *editor.State
-
 	resultView int
-	grid       ui.ListState
-	gridSel    ui.Selection[int]
-	cols       []ui.TableColumn
-	rows       [][]string
 }
 
-func New() *App {
-	buf := editor.NewBuffer(mockSQL)
+func New(core *app.App) *App {
+	buf := editor.NewBuffer("")
 	buf.SetLanguage(editor.LanguageFor("query.sql"))
-	a := &App{
-		settings:  theme.DefaultSettings(),
-		sidebarW:  260,
-		filesW:    240,
-		editorPct: 48,
-		treeRow:   -1,
-		fileRow:   -1,
-		tabs: []tab{
-			{title: "revenue.sql", dirty: true},
-			{title: "users", table: true},
-			{title: "scratch.sql"},
-		},
-		code: &editor.State{Buffer: buf},
-		rows: mockRows(500),
-	}
-	for _, p := range []string{"local-pg", "local-pg/app_db", "local-pg/app_db/public"} {
-		a.tree.Open.Add(p)
-	}
-	a.files.Open.Add("~/sql")
-	a.grid.Selection, a.grid.CellSelect = &a.gridSel, true
-	a.cols = []ui.TableColumn{{ID: "#", Title: "", RowHeader: true, Fixed: true, Width: 48, Align: ui.End}}
-	for _, name := range mockColumns {
-		a.cols = append(a.cols, ui.TableColumn{ID: name, Title: name, Width: 150})
-	}
-	return a
+	// The saved appearance is the segmented control's starting choice;
+	// otherwise the first frame writes System over it.
+	return &App{core: core, code: &editor.State{Buffer: buf},
+		appearance: max(0, slices.Index(appearances, core.UI().Theme.Appearance))}
 }
 
 var appearances = []theme.Appearance{theme.System, theme.Light, theme.Dark}
 
-func (a *App) View(c *ui.Context) {
+func (s *App) View(c *ui.Context) {
 	// Before SetTheme, the frame's theme is the system's.
-	a.systemDark = c.Theme().Dark
-	a.settings.Appearance = appearances[a.appearance]
-	res := theme.Resolve(a.settings, c.Theme())
+	s.systemDark = c.Theme().Dark
+	u := s.core.UI()
+	u.Theme.Appearance = appearances[s.appearance]
+	res := theme.Resolve(u.Theme, c.Theme())
 	c.SetTheme(&res.UI)
-	a.code.Theme = res.Code
+	s.code.Theme = res.Code
 	pal := res.Islands
 	ui.Column(c).Fill().Background(pal.Canvas).Children(func() {
-		a.titleBar(c)
+		s.titleBar(c)
 		ui.Row(c).Grow(1).FillWidth().Padding(0, islandGap, islandGap, islandGap).Children(func() {
-			a.body(c, pal)
+			s.body(c, pal)
 		})
 	})
-	a.settingsDialog(c)
+	s.settingsDialog(c)
+	s.dialogs(c, pal)
+	s.toasts(c)
+	s.syncEditor()
+	s.core.Sync()
+	s.core.ConnSync()
 }
 
 // ink is what icons and secondary text on a row take: on a chosen row,
@@ -116,29 +81,14 @@ func ink(t *ui.Theme, chosen bool) (icon, muted ui.Color) {
 	return t.TextMuted, t.TextMuted
 }
 
-func chosenItem(s *ui.OutlineState[string], row int, item string) bool {
-	return row >= 0 && row < s.Rows() && s.Item(row) == item
-}
-
-func (a *App) body(c *ui.Context, pal palette) {
-	center := func() { a.workspace(c, pal) }
-	withFiles := center
-	if !a.hideFiles {
-		// Split sizes its first pane, so the files panel's width is what is
-		// left of the room once the workspace takes its share.
-		withFiles = func() {
-			ui.Row(c).Fill().Gap(islandGap).AlignItems(ui.Stretch).Children(func() {
-				ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Children(center)
-				a.filesPanel(c, pal)
-			})
-		}
-	}
-	if a.hideSidebar {
-		withFiles()
+func (s *App) body(c *ui.Context, pal palette) {
+	center := func() { s.workspace(c, pal) }
+	if s.core.UI().HideSidebar {
+		center()
 		return
 	}
 	gapSplit(c, pal, false, func(first, second func(func())) {
-		ui.Split(c, &a.sidebarW, func() { first(func() { a.sidebar(c, pal) }) }, func() { second(withFiles) }).SplitReset(260).Fill()
+		ui.Split(c, &s.core.UI().SidebarW, func() { first(func() { s.sidebar(c, pal) }) }, func() { second(center) }).SplitReset(260).Fill()
 	})
 }
 
@@ -157,7 +107,7 @@ func gapSplit(c *ui.Context, pal palette, vertical bool, build func(first, secon
 			ui.Themed(c, base).Background(ui.Transparent).Fill().Padding(pad...).Children(content)
 		}
 	}
-	first, second := pane([]float32{0, half, 0, 0}), pane([]float32{0, 0, 0, half})
+	first, second := pane([]float32{0, 0, 0, half}), pane([]float32{0, half, 0, 0})
 	if vertical {
 		first, second = pane([]float32{0, 0, half, 0}), pane([]float32{half, 0, 0, 0})
 	}
@@ -178,246 +128,155 @@ func iconButton(c *ui.Context, icon *ui.SVG, label string) ui.Element {
 	return b
 }
 
-func (a *App) titleBar(c *ui.Context) {
+func (s *App) titleBar(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
+	u := s.core.UI()
 	ui.Row(c).Height(max(bar.Height, 40)).FillWidth().AlignItems(ui.Center).Gap(2).
 		Padding(0, bar.Right+10, 0, bar.Left+10).DragWindow().Children(func() {
 		if iconButton(c, icons.PanelLeft, "Toggle connections").Clicked() {
-			a.hideSidebar = !a.hideSidebar
+			u.HideSidebar = !u.HideSidebar
 		}
 		ui.Spacer(c)
-		search := ui.ButtonBase(c.Key("quick-open")).Width(360).Height(26).Radius(6).
-			Padding(0, 10).Gap(8).Background(t.Text.Alpha(0.06)).Label("Quick open")
-		search.Children(func() {
+		// The quick open field arrives with search (M5); it shows the keys
+		// it will take but takes none until then.
+		ui.Row(c).Width(360).Height(26).Radius(6).Padding(0, 10).Gap(8).
+			Background(t.Text.Alpha(0.06)).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icons.Search).FontSize(13).TextColor(t.TextMuted)
 			ui.Text(c, "Search tables, files, connections").FontSize(12).TextColor(t.TextMuted).SingleLine()
 			ui.Spacer(c)
 			ui.Text(c, "⌘P").FontSize(11).TextColor(t.TextMuted)
 		})
 		ui.Spacer(c)
-		iconButton(c, icons.Plus, "New connection")
-		if iconButton(c, icons.FolderTree, "Toggle SQL files").Clicked() {
-			a.hideFiles = !a.hideFiles
+		if iconButton(c, icons.Plus, "New connection").Clicked() {
+			s.core.OpenConnectionDialog("")
 		}
 		if iconButton(c, icons.Moon, "Toggle light and dark").Clicked() {
-			if a.settings.IsDark(a.systemDark) {
-				a.appearance = 1
+			if u.Theme.IsDark(s.systemDark) {
+				s.appearance = 1
 			} else {
-				a.appearance = 2
+				s.appearance = 2
 			}
 		}
 		if iconButton(c, icons.Settings, "Settings").Clicked() {
-			a.settingsOpen = true
+			s.settingsOpen = true
 		}
 	})
 }
 
-func panelHeader(c *ui.Context, title string, actions func()) {
-	t := c.Theme()
-	ui.Row(c).Height(34).FillWidth().AlignItems(ui.Center).Padding(0, 6, 0, 12).Children(func() {
-		ui.Text(c, title).FontSize(11).FontWeight(600).TextColor(t.TextMuted)
-		ui.Spacer(c)
-		actions()
-	})
-}
-
-func (a *App) sidebar(c *ui.Context, pal palette) {
-	t := c.Theme()
-	island(c, pal).Fill().Children(func() {
-		panelHeader(c, "CONNECTIONS", func() {
-			iconButton(c, icons.Plus, "Add connection")
+func (s *App) workspace(c *ui.Context, pal palette) {
+	// A table's rows take the whole workspace, without the editor above
+	// them, as recall shows a table tab.
+	if tab, ok := s.core.ActiveTab(); ok && tab.Mode == app.ModeTable {
+		island(c, pal).Fill().Children(func() {
+			s.tabStrip(c, pal)
+			ui.Divider(c)
+			s.results(c)
 		})
-		ui.Box(c).FillWidth().Padding(0, 8, 6, 8).Children(func() {
-			ui.SearchField(c, &a.treeSearch).Placeholder("Filter").FillWidth().Label("Filter tables")
-		})
-		a.tree.List.Selected = &a.treeRow
-		roots := make([]string, len(mockConns))
-		for i, cn := range mockConns {
-			roots[i] = cn.name
-		}
-		ui.Outline(c, &a.tree, roots, treeChildren, func(p string) {
-			depth := strings.Count(p, "/")
-			name := path.Base(p)
-			chosen := chosenItem(&a.tree, a.treeRow, p)
-			icon, muted := ink(t, chosen)
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				switch {
-				case depth == 0:
-					cn := mockConns[0]
-					for _, x := range mockConns {
-						if x.name == p {
-							cn = x
-						}
-					}
-					brand := t.Accent
-					if chosen {
-						brand = icon
-					}
-					ui.Icon(c, icons.Database).FontSize(14).TextColor(brand)
-					ui.Text(c, name).SingleLine().FontWeight(500)
-					if cn.connected {
-						ui.Box(c).Size(6, 6).Radius(3).Background(t.Success)
-					}
-					ui.Text(c, cn.dialect).FontSize(11).TextColor(muted).SingleLine()
-				case depth == 1:
-					ui.Icon(c, icons.Database).FontSize(13).TextColor(icon)
-					ui.Text(c, name).SingleLine()
-				case depth == 2:
-					ui.Icon(c, icons.ListTree).FontSize(13).TextColor(icon)
-					ui.Text(c, name).SingleLine()
-				case depth == 3:
-					ui.Icon(c, icons.Table).FontSize(13).TextColor(icon)
-					ui.Text(c, name).SingleLine()
-				case depth == 4:
-					ui.Text(c, name).FontSize(12).TextColor(muted).SingleLine()
-				default:
-					glyph := icons.Columns
-					if strings.Contains(p, "/Indexes/") {
-						glyph = icons.Key
-					}
-					ui.Icon(c, glyph).FontSize(12).TextColor(icon)
-					ui.Text(c, name).FontSize(12).SingleLine()
-				}
-			})
-		}).Grow(1).FillWidth()
-	})
-}
-
-func (a *App) filesPanel(c *ui.Context, pal palette) {
-	t := c.Theme()
-	island(c, pal).Width(a.filesW).Shrink(0).Children(func() {
-		panelHeader(c, "SQL FILES", func() {
-			iconButton(c, icons.Plus, "New file")
-			iconButton(c, icons.Folder, "Open folder")
-		})
-		a.files.List.Selected = &a.fileRow
-		ui.Outline(c, &a.files, []string{"~/sql"}, func(p string) []string {
-			return mockFiles[p]
-		}, func(p string) {
-			icon, _ := ink(t, chosenItem(&a.files, a.fileRow, p))
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				glyph := icons.Folder
-				if strings.HasSuffix(p, ".sql") {
-					glyph = icons.FileCode
-				}
-				ui.Icon(c, glyph).FontSize(13).TextColor(icon)
-				ui.Text(c, path.Base(p)).SingleLine()
-			})
-		}).Grow(1).FillWidth()
-	})
-}
-
-func (a *App) workspace(c *ui.Context, pal palette) {
+		return
+	}
 	gapSplit(c, pal, true, func(first, second func(func())) {
-		ui.SplitVerticalPercent(c, &a.editorPct, func() {
+		ui.SplitVerticalPercent(c, &s.core.UI().EditorPct, func() {
 			first(func() {
 				island(c, pal).Fill().Children(func() {
-					a.tabStrip(c, pal)
-					a.runBar(c)
+					s.tabStrip(c, pal)
+					s.runBar(c)
 					ui.Divider(c)
-					editor.View(c, a.code).Grow(1).FillWidth()
+					editor.View(c, s.code).Grow(1).FillWidth()
 				})
 			})
 		}, func() {
 			second(func() {
-				island(c, pal).Fill().Children(func() { a.results(c) })
+				island(c, pal).Fill().Children(func() { s.results(c) })
 			})
 		}).Fill()
 	})
 }
 
-func (a *App) tabStrip(c *ui.Context, pal palette) {
-	t := c.Theme()
-	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 6).Gap(2).Children(func() {
-		for i, tb := range a.tabs {
-			on := i == a.active
-			b := ui.ButtonBase(c.Key("tab-"+tb.title)).Height(28).Radius(6).Padding(0, 6, 0, 10).Gap(6).Label(tb.title)
-			switch {
-			case on:
-				b.Background(pal.Active)
-			case b.Hovered():
-				b.Background(t.SurfaceHover)
-			}
-			if b.Clicked() {
-				a.active = i
-			}
-			b.Children(func() {
-				icon := icons.FileCode
-				if tb.table {
-					icon = icons.Table
-				}
-				fg := t.TextMuted
-				if on {
-					fg = t.Text
-				}
-				ui.Icon(c, icon).FontSize(13).TextColor(fg)
-				ui.Text(c, tb.title).FontSize(12).TextColor(fg).SingleLine()
-				if tb.dirty {
-					ui.Box(c).Size(6, 6).Radius(3).Background(t.TextMuted)
-				} else {
-					ui.Icon(c, icons.X).FontSize(12).TextColor(t.TextMuted)
-				}
-			})
-		}
-		iconButton(c, icons.Plus, "New tab")
-	})
-}
-
-func (a *App) runBar(c *ui.Context) {
+// runBar names the tab's target and the keys SQL will take; running, explain
+// and format arrive with the editor (M3) and the plan viewer (M6).
+func (s *App) runBar(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 8).Gap(6).Children(func() {
-		ui.PrimaryButton(c.Key("run"), "").Height(26).Children(func() {
-			ui.Icon(c, icons.Play).FontSize(12)
-			ui.Text(c, "Run").FontSize(12).SingleLine()
-		})
-		ui.Button(c.Key("datasource"), "").Height(26).Children(func() {
+		ui.Button(c.Key("run"), "Run").Height(26).Disabled(true).Tooltip("Running SQL arrives with the editor (M3)")
+		ui.Row(c).Height(26).Radius(6).Padding(0, 8).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icons.Database).FontSize(12).TextColor(t.Accent)
-			ui.Text(c, "local-pg · app_db").FontSize(12).SingleLine()
+			ui.Text(c, s.datasourceLabel()).FontSize(12).SingleLine()
 			ui.Icon(c, icons.ChevronDown).FontSize(12).TextColor(t.TextMuted)
 		})
-		iconButton(c, icons.ListTree, "Explain plan  ⌥⇧E")
-		iconButton(c, icons.WandSparkles, "Format SQL")
 		ui.Spacer(c)
-		ui.Text(c, "Saved").FontSize(11).TextColor(t.TextMuted)
+		if tab, ok := s.core.ActiveTab(); ok {
+			state := "Saved"
+			if tab.Mode == app.ModeQuery && s.core.TabDirty(tab) {
+				state = "Unsaved"
+			}
+			ui.Text(c, state).FontSize(11).TextColor(t.TextMuted)
+		}
 	})
 }
 
-func (a *App) results(c *ui.Context) {
+// datasourceLabel is the active tab's connection and database, "" for no
+// tab, as the editor's datasource picker shows it.
+func (s *App) datasourceLabel() string {
+	tab, ok := s.core.ActiveTab()
+	if !ok {
+		return "No datasource"
+	}
+	name := tab.Conn
+	if p, ok := s.core.Profile(tab.Conn); ok {
+		name = p.Name
+	}
+	if tab.Database != "" {
+		return name + " · " + tab.Database
+	}
+	return name
+}
+
+func (s *App) results(c *ui.Context) {
 	t := c.Theme()
-	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 6, 0, 8).Gap(8).Children(func() {
-		ui.Segmented(c, &a.resultView, "Result", "Explain").Label("Result view")
-		ui.Text(c, "500 rows · 38 ms").FontSize(11).TextColor(t.TextMuted)
+	title, empty := "RESULTS", "Run a query to see its rows."
+	if tab, ok := s.core.ActiveTab(); ok && tab.Mode == app.ModeTable {
+		// The grid that lists the rows lands in M4; until then the tab
+		// names its table and says what it holds.
+		title, empty = tab.Table, "No rows loaded."
+	}
+	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(8).Children(func() {
+		ui.Text(c, title).FontSize(11).FontWeight(600).TextColor(t.TextMuted).SingleLine()
 		ui.Spacer(c)
-		iconButton(c, icons.Refresh, "Rerun  ⌘R")
-		iconButton(c, icons.Columns, "Columns")
-		iconButton(c, icons.Download, "Export")
 	})
 	ui.Divider(c)
-	// Rows of a data grid are denser than the rest of the app.
-	dense := *t
-	dense.Spacing = 3
-	ui.Themed(c, &dense).Background(ui.Transparent).Grow(1).FillWidth().Children(func() { a.resultGrid(c, t) })
+	ui.Box(c).Grow(1).FillWidth().Center().Children(func() {
+		ui.Text(c, empty).FontSize(12).TextColor(t.TextMuted)
+	})
 }
 
-func (a *App) resultGrid(c *ui.Context, t *ui.Theme) {
-	ui.Table(c, &a.grid, a.cols, len(a.rows), func(row, col int) {
-		if col == 0 {
-			_, muted := ink(t, a.grid.CellSelected(row, col))
-			ui.Textf(c, "%d", row+1).FontSize(11).TextColor(muted).SingleLine()
-			return
+// toasts shows what the app queued; a message with an action stays until
+// the user takes it or closes it.
+func (s *App) toasts(c *ui.Context) {
+	for _, m := range s.core.TakeToasts() {
+		if m.Action != "" && m.Run != nil {
+			c.ToastAction(m.Message, m.Action, m.Run)
+			continue
 		}
-		v, fg := a.rows[row][col-1], t.Text
-		if v == "" {
-			v, fg = "NULL", t.TextMuted.Alpha(0.6)
+		c.Toast(m.Message)
+	}
+}
+
+// syncEditor moves the editor onto the active tab and writes its text back,
+// so a tab is dirty the moment it differs from what it was saved with.
+func (s *App) syncEditor() {
+	tab, ok := s.core.ActiveTab()
+	switch {
+	case !ok:
+		if s.codeTab != "" {
+			s.code.Buffer.Set("")
+			s.codeTab, s.codeVer = "", s.code.Buffer.Version()
 		}
-		if a.grid.CellSelected(row, col) {
-			if v == "NULL" {
-				fg = t.AccentText.Alpha(0.6)
-			} else {
-				fg = t.AccentText
-			}
-		}
-		ui.Text(c, v).FontSize(12).Font("monospace").TextColor(fg).SingleLine()
-	}).Grow(1).FillWidth()
+	case tab.ID != s.codeTab:
+		s.code.Buffer.Set(tab.SQL)
+		s.codeTab, s.codeVer = tab.ID, s.code.Buffer.Version()
+	case s.code.Buffer.Version() != s.codeVer:
+		s.codeVer = s.code.Buffer.Version()
+		s.core.SetTabSQL(tab.ID, s.code.Buffer.String())
+	}
 }

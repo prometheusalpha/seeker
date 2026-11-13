@@ -1,0 +1,78 @@
+{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": {
+      "query_cost": "2.20"
+    },
+    "ordering_operation": {
+      "using_temporary_table": true,
+      "using_filesort": true,
+      "grouping_operation": {
+        "using_filesort": false,
+        "nested_loop": [
+          {
+            "table": {
+              "table_name": "u",
+              "access_type": "index",
+              "possible_keys": [
+                "PRIMARY",
+                "k_name"
+              ],
+              "key": "k_name",
+              "used_key_parts": [
+                "name"
+              ],
+              "key_length": "83",
+              "rows_examined_per_scan": 1,
+              "rows_produced_per_join": 1,
+              "filtered": "100.00",
+              "using_index": true,
+              "cost_info": {
+                "read_cost": "1.00",
+                "eval_cost": "0.10",
+                "prefix_cost": "1.10",
+                "data_read_per_join": "88"
+              },
+              "used_columns": [
+                "id",
+                "name"
+              ],
+              "attached_condition": "(`recall_test`.`u`.`name` > 'a')"
+            }
+          },
+          {
+            "table": {
+              "table_name": "o",
+              "access_type": "ref",
+              "possible_keys": [
+                "k_uid"
+              ],
+              "key": "k_uid",
+              "used_key_parts": [
+                "uid"
+              ],
+              "key_length": "5",
+              "ref": [
+                "recall_test.u.id"
+              ],
+              "rows_examined_per_scan": 1,
+              "rows_produced_per_join": 1,
+              "filtered": "100.00",
+              "cost_info": {
+                "read_cost": "1.00",
+                "eval_cost": "0.10",
+                "prefix_cost": "2.20",
+                "data_read_per_join": "16"
+              },
+              "used_columns": [
+                "id",
+                "uid",
+                "amt"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

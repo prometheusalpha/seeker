@@ -1,0 +1,82 @@
+{
+  "query": "/* select#1 */ select `recall_test`.`u`.`name` AS `name`,sum(`recall_test`.`o`.`amt`) AS `s` from `recall_test`.`u` join `recall_test`.`o` where ((`recall_test`.`o`.`uid` = `recall_test`.`u`.`id`) and (`recall_test`.`u`.`name` > 'a')) group by `recall_test`.`u`.`name` order by `s` desc",
+  "inputs": [
+    {
+      "inputs": [
+        {
+          "inputs": [
+            {
+              "inputs": [
+                {
+                  "inputs": [
+                    {
+                      "covering": true,
+                      "operation": "Covering index scan on u using k_name",
+                      "index_name": "k_name",
+                      "table_name": "u",
+                      "access_type": "index",
+                      "schema_name": "recall_test",
+                      "used_columns": [
+                        "id",
+                        "name"
+                      ],
+                      "estimated_rows": 1.0,
+                      "index_access_type": "index_scan",
+                      "estimated_total_cost": 1.1
+                    }
+                  ],
+                  "condition": "(u.`name` > 'a')",
+                  "operation": "Filter: (u.`name` > 'a')",
+                  "access_type": "filter",
+                  "estimated_rows": 1.0,
+                  "estimated_total_cost": 1.1
+                },
+                {
+                  "covering": false,
+                  "operation": "Index lookup on o using k_uid (uid=u.id)",
+                  "index_name": "k_uid",
+                  "table_name": "o",
+                  "access_type": "index",
+                  "schema_name": "recall_test",
+                  "used_columns": [
+                    "id",
+                    "uid",
+                    "amt"
+                  ],
+                  "estimated_rows": 1.0,
+                  "lookup_condition": "uid=u.id",
+                  "index_access_type": "index_lookup",
+                  "estimated_total_cost": 1.1
+                }
+              ],
+              "join_type": "inner join",
+              "operation": "Nested loop inner join",
+              "access_type": "join",
+              "estimated_rows": 1.0,
+              "join_algorithm": "nested_loop",
+              "estimated_total_cost": 2.2
+            }
+          ],
+          "group_by": true,
+          "functions": [
+            "sum(o.amt)"
+          ],
+          "operation": "Group aggregate: sum(o.amt)",
+          "access_type": "aggregate",
+          "estimated_rows": 1.0,
+          "estimated_total_cost": 2.3000000000000003
+        }
+      ],
+      "operation": "Stream results",
+      "access_type": "stream",
+      "estimated_rows": 1.0,
+      "estimated_total_cost": 2.3000000000000003
+    }
+  ],
+  "operation": "Sort: s DESC",
+  "query_type": "select",
+  "access_type": "sort",
+  "sort_fields": [
+    "s DESC"
+  ]
+}

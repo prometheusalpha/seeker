@@ -1,0 +1,42 @@
+[
+  {
+    "language": "postgresql",
+    "sql": "select a::int, b::text from t join u on u.id=t.id where x in (1,2) order by a desc limit 5",
+    "want": "select\n  a::int,\n  b::text\nfrom\n  t\n  join u on u.id = t.id\nwhere\n  x in (1, 2)\norder by\n  a desc\nlimit\n  5"
+  },
+  {
+    "language": "postgresql",
+    "sql": "WITH x AS (SELECT id FROM t WHERE n > 1) SELECT * FROM x LEFT JOIN y USING (id)",
+    "want": "WITH\n  x AS (\n    SELECT\n      id\n    FROM\n      t\n    WHERE\n      n > 1\n  )\nSELECT\n  *\nFROM\n  x\n  LEFT JOIN y USING (id)"
+  },
+  {
+    "language": "postgresql",
+    "sql": "insert into t (a,b) values (1,'it''s'),(2,$$x;y$$) returning id",
+    "want": "insert into\n  t (a, b)\nvalues\n  (1, 'it''s'),\n  (2, $$x;y$$)\nreturning\n  id"
+  },
+  {
+    "language": "postgresql",
+    "sql": "select * from t where j->>'k' = 'v' and a = any($1) -- trailing\n;select 2",
+    "want": "select\n  *\nfrom\n  t\nwhere\n  j ->> 'k' = 'v'\n  and a = any ($1) -- trailing\n;\n\nselect\n  2"
+  },
+  {
+    "language": "mysql",
+    "sql": "select `a`, b from t join u on t.id=u.id where x like '%a%' limit 5, 10",
+    "want": "select\n  `a`,\n  b\nfrom\n  t\n  join u on t.id = u.id\nwhere\n  x like '%a%'\nlimit\n  5, 10"
+  },
+  {
+    "language": "mysql",
+    "sql": "UPDATE t SET a = 1, b = IFNULL(b, 0) WHERE id IN (SELECT id FROM u) # note",
+    "want": "UPDATE t\nSET\n  a = 1,\n  b = IFNULL(b, 0)\nWHERE\n  id IN (\n    SELECT\n      id\n    FROM\n      u\n  ) # note"
+  },
+  {
+    "language": "mysql",
+    "sql": "create table t (id int primary key auto_increment, name varchar(20) not null)",
+    "want": "create table t (\n  id int primary key auto_increment,\n  name varchar(20) not null\n)"
+  },
+  {
+    "language": "postgresql",
+    "sql": "select\n\n  1",
+    "want": "select\n  1"
+  }
+]

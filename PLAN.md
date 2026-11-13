@@ -21,11 +21,13 @@ Nguồn: `../recall` (Electrobun + Bun + Vue, ~33k dòng, 16 file test bun). Đ�
 11. Thứ tự: M1 trước, việc trong fork (F1, F2) sau, ngay trước phase cần nó.
 12. Identifier `io.starchaser.seeker` (`mygo.json`). `PathUserData` đi theo nó: không đổi nữa sau khi có dữ liệu thật.
 13. Git: repo `seeker`, remote `origin` = `git@github.com:prometheusalpha/seeker.git`.
+14. Script chỉ có comment (`select 1;\n-- done`): giữ cách mới, `sqltext.Split` bỏ đoạn không có code (chốt 2026-11-13).
+15. Docker test: OrbStack + `../recall/compose.yaml`, agent tự bật khi cần test DB thật.
+16. Session chạy SQL của user: **mỗi tab một session** (key `connection, database, tab`), không dùng chung theo database: giữ `SET`/temp table/`BEGIN` của tab, và hai tab cùng database chạy song song. Session catalog (sidebar): tối đa 3 mỗi (connection, database); MySQL dùng session của profile cho mọi database.
 
 ## 2. Quyết định còn mở
 
-15. Đoạn script chỉ có comment (vd. `select 1;\n-- done`): `sqltext.Split` hiện bỏ đi, recall backend thì gửi lên server. Giữ cách mới hay quay lại như recall?
-16. Docker: OrbStack đã cài nhưng đang tắt. Ai bật?
+(không có)
 
 ---
 
@@ -42,13 +44,14 @@ internal/
   icons/      lucide 0.470.0 (svg/*.svg, go:embed)
   view/       layout island (mock), settings dialog
   testenv/    helper cho test (sqlite native lib)
+  driver/     Conn = một session; postgres (pgx v5), mysql (go-sql-driver v1.10); rowUpdate
+  pool/       session catalog + session theo tab, idle probe, thay session chết, OnLost
+  grid/       formatCell, kind, width, columnWindow/Order, cellSum, sqlInsert, pendingEdits
+  explain/    parse plan PG/MySQL + layout canvas
+  sqlfmt/     goja + sql-formatter 15.9.0 (bundle bằng gen.sh)
+  rank/       tableRank + fuzzy (Quick Open, gợi ý cột)
   # sắp có:
-  driver/     interface + postgres/ (pgx v5) + mysql/ (go-sql-driver)
-  pool/       pool theo (connectionID, database), idle probe, reopen, cancel
-  grid/       columnType, width, order, cellSum, formatCell, sqlInsert, pendingEdits, rowUpdate
-  explain/    parse plan + layout canvas
   files/      sqlFiles, findInFiles (rg)
-  sqlfmt/     goja + sql-formatter
   redis/      go-redis + commandSafety
 ```
 
@@ -102,18 +105,18 @@ Kết quả:
 
 Shell island bằng dữ liệu giả, theme setting + Catppuccin, sửa contrast hàng được chọn. Setting chưa lưu (chờ store được nối ở M2).
 
-### M1: Core (logic, chưa UI)
+### M1: Core (logic, chưa UI) ✅ (2026-11-13)
 
 Phạm vi:
 - [x] `internal/store`: schema y hệt recall + bảng `settings`; connections, bookmarks, pins, settings; `ImportRecall` một lần. Đã thử với `recall.db` thật (chỉ đọc, vào file tạm): khớp `sqlite3`.
 - [x] `internal/secret`.
 - [x] `internal/sqltext` `Split`/`At`.
-- [ ] `internal/driver`: interface + postgres (pgx v5) + mysql (go-sql-driver/mysql). Introspection: databases, schemas, tables(filter), columns, indexes, triggers, foreign keys, table DDL. Execute, explain.
-- [ ] `internal/pool`.
-- [ ] `internal/grid` (logic thuần): `formatCell`, `gridColumnType`, `gridColumnWidth`, `columnWindow`, `columnOrder`, `cellSum`, `sqlInsert`, `pendingEdits`, `rowUpdate`.
-- [ ] `internal/explain`: chuẩn hoá plan JSON PG/MySQL → `ExplainPlan`; layout canvas (`lib/explainCanvas.ts`).
-- [ ] `internal/sqlfmt`.
-- [ ] Port test bun: `appDbSchema` (bỏ, schema mới không có legacy), `clauseSuggestion`, `columnOrder`, `columnWindow`, `formatCell`, `connectionPoolReplacement`, `mysqlPublicKeyRetrieval`, `mysqlQueryDatabase`, `rowUpdate`, `tableRank`. `postgresTextFidelity` đổi thành test giữ microsecond qua driver Go.
+- [x] `internal/driver`: interface + postgres (pgx v5) + mysql (go-sql-driver/mysql). Introspection: databases, schemas, tables(filter), columns, indexes, triggers, foreign keys, table DDL. Execute, explain.
+- [x] `internal/pool`.
+- [x] `internal/grid` (logic thuần): `formatCell`, `gridColumnType`, `gridColumnWidth`, `columnWindow`, `columnOrder`, `cellSum`, `sqlInsert`, `pendingEdits`, `rowUpdate`.
+- [x] `internal/explain`: chuẩn hoá plan JSON PG/MySQL → `ExplainPlan`; layout canvas (`lib/explainCanvas.ts`).
+- [x] `internal/sqlfmt`.
+- [x] Port test bun: `appDbSchema` (bỏ, schema mới không có legacy), `clauseSuggestion`, `columnOrder`, `columnWindow`, `formatCell`, `connectionPoolReplacement`, `mysqlPublicKeyRetrieval`, `mysqlQueryDatabase`, `rowUpdate`, `tableRank`. `postgresTextFidelity` đổi thành test giữ microsecond qua driver Go.
 
 Nguồn recall: `src/bun/driver.ts`, `drivers/postgres.ts` (819 dòng), `drivers/mysql.ts` (719), `connectionPool.ts`, `handlers.ts` (execute/cancel ~dòng 108–111, 160–266, 556–610), `rowUpdate.ts`, `src/mainview/lib/*`, `src/shared/types.ts`, `tests/*`.
 
@@ -148,6 +151,18 @@ Gotchas:
 - **sqlfmt:** chạy goja ngoài UI thread. Lỗi parse của `sql-formatter` có thể dài hàng nghìn ký tự (liệt kê mọi token hợp lệ), phải cắt trước khi hiện. Bundle JS (esbuild/bun build một file) rồi `go:embed`; ghi lại version.
 
 Xong khi: test PG/MySQL thật xanh (introspection, execute nhiều statement, cancel, idle probe với TCP proxy nuốt packet, giữ microsecond, rowUpdate), test logic grid/explain/sqlfmt xanh.
+
+Kết quả (đã làm, khác recall ở đâu):
+- Chạy test DB: `SEEKER_TEST_PG_URL=postgres://postgres:postgres@127.0.0.1:55432/recall_test SEEKER_TEST_MYSQL_URL=mysql://root:mysql@127.0.0.1:53306/recall_test`. Test pool với proxy đã thử tắt probe: test treo, tức là test bắt được lỗi thật.
+- Cancel giữ session: PG dùng `CancelRequestContextWatcherHandler` (cắt socket sau 5s nếu server không trả lời); MySQL chạy query không gắn ctx, cancel bằng `KILL QUERY` từ connection thứ hai. `SELECT SLEEP()` bị kill trả 1 chứ không lỗi.
+- Giá trị ô: `nil` / `string` (text của server) / `[]byte` (bytea, BLOB, VARBINARY…). go-sql-driver tự parse số kể cả text protocol: số nguyên in lại y nguyên, float in dạng ngắn nhất của Go (`1e+21` thay vì `1e21`).
+- Kiểu cột: PG = `format_type` (giống `pg_typeof` của recall, cache theo session); MySQL = `DatabaseTypeName()` (`TIMESTAMP`, `VARCHAR`…), recall thì đoán từ giá trị.
+- MySQL `TIMESTAMP`: driver nối offset của session (`+07:00`) vào text, hỏi sau mỗi statement có cột TIMESTAMP (1 round trip). Zone có DST thì là offset hôm nay.
+- `allowPublicKeyRetrieval=false` **không làm được**: go-sql-driver luôn tự lấy RSA key, không có công tắc. Param bị bỏ qua (không gửi thành system variable).
+- `queryTimeoutSecs` recall không dùng ở backend → không áp. `connectTimeoutSecs` áp cho cả PG và MySQL (mặc định 30).
+- Explain: MySQL 8.4 với `explain_json_format_version=2` để cây ở gốc document (không có `query_plan`); recall không nhận ra và vẽ một node rỗng. Seeker nhận cả ba dạng.
+- `formatCell` dùng `FixedZone(+07)` thay vì `Asia/Bangkok` (ngày trước 1920 recall lệch LMT nhưng vẫn ghi `+07`). `sqlInsert` ghi binary dạng hex (`X'..'`, `'\x..'`), recall ghi chuỗi base64 → insert sai byte.
+- `sqltext` có thêm `clause.go` (gợi ý WHERE/ORDER BY) và import `rank` (fuzzy).
 
 ### F1 (fork): `ui.Table` ảo hoá cột + cột ghim (trước M4)
 

@@ -305,6 +305,10 @@ func (a *App) forceClose(id string) {
 	}
 	a.tabs.Items = slices.Delete(a.tabs.Items, i, i+1)
 	a.pl.CloseTab(id)
+	a.Stop(id)
+	a.cancelAutosave(id)
+	delete(a.saveBlocked, id)
+	delete(a.editors, id)
 	switch {
 	case len(a.tabs.Items) == 0:
 		a.tabs.Active = -1

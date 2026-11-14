@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/editor"
 
 	"seeker/internal/app"
 	"seeker/internal/icons"
@@ -25,11 +24,6 @@ type palette = theme.Islands
 type App struct {
 	core *app.App
 
-	// One buffer until M3 gives each tab its own.
-	code    *editor.State
-	codeTab string
-	codeVer uint64
-
 	appearance   int
 	settingsOpen bool
 	systemDark   bool
@@ -38,11 +32,9 @@ type App struct {
 }
 
 func New(core *app.App) *App {
-	buf := editor.NewBuffer("")
-	buf.SetLanguage(editor.LanguageFor("query.sql"))
 	// The saved appearance is the segmented control's starting choice;
 	// otherwise the first frame writes System over it.
-	return &App{core: core, code: &editor.State{Buffer: buf},
+	return &App{core: core,
 		appearance: max(0, slices.Index(appearances, core.UI().Theme.Appearance))}
 }
 
@@ -55,7 +47,7 @@ func (s *App) View(c *ui.Context) {
 	u.Theme.Appearance = appearances[s.appearance]
 	res := theme.Resolve(u.Theme, c.Theme())
 	c.SetTheme(&res.UI)
-	s.code.Theme = res.Code
+	s.core.SetEditorTheme(res.Code)
 	pal := res.Islands
 	ui.Column(c).Fill().Background(pal.Canvas).Children(func() {
 		s.titleBar(c)
@@ -66,7 +58,8 @@ func (s *App) View(c *ui.Context) {
 	s.settingsDialog(c)
 	s.dialogs(c, pal)
 	s.toasts(c)
-	s.syncEditor()
+	s.bookmarkKeys(c)
+	s.core.SyncEditors()
 	s.core.Sync()
 	s.core.ConnSync()
 }
@@ -180,9 +173,7 @@ func (s *App) workspace(c *ui.Context, pal palette) {
 			first(func() {
 				island(c, pal).Fill().Children(func() {
 					s.tabStrip(c, pal)
-					s.runBar(c)
-					ui.Divider(c)
-					editor.View(c, s.code).Grow(1).FillWidth()
+					s.editorPane(c)
 				})
 			})
 		}, func() {
@@ -190,63 +181,6 @@ func (s *App) workspace(c *ui.Context, pal palette) {
 				island(c, pal).Fill().Children(func() { s.results(c) })
 			})
 		}).Fill()
-	})
-}
-
-// runBar names the tab's target and the keys SQL will take; running, explain
-// and format arrive with the editor (M3) and the plan viewer (M6).
-func (s *App) runBar(c *ui.Context) {
-	t := c.Theme()
-	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 8).Gap(6).Children(func() {
-		ui.Button(c.Key("run"), "Run").Height(26).Disabled(true).Tooltip("Running SQL arrives with the editor (M3)")
-		ui.Row(c).Height(26).Radius(6).Padding(0, 8).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, icons.Database).FontSize(12).TextColor(t.Accent)
-			ui.Text(c, s.datasourceLabel()).FontSize(12).SingleLine()
-			ui.Icon(c, icons.ChevronDown).FontSize(12).TextColor(t.TextMuted)
-		})
-		ui.Spacer(c)
-		if tab, ok := s.core.ActiveTab(); ok {
-			state := "Saved"
-			if tab.Mode == app.ModeQuery && s.core.TabDirty(tab) {
-				state = "Unsaved"
-			}
-			ui.Text(c, state).FontSize(11).TextColor(t.TextMuted)
-		}
-	})
-}
-
-// datasourceLabel is the active tab's connection and database, "" for no
-// tab, as the editor's datasource picker shows it.
-func (s *App) datasourceLabel() string {
-	tab, ok := s.core.ActiveTab()
-	if !ok {
-		return "No datasource"
-	}
-	name := tab.Conn
-	if p, ok := s.core.Profile(tab.Conn); ok {
-		name = p.Name
-	}
-	if tab.Database != "" {
-		return name + " · " + tab.Database
-	}
-	return name
-}
-
-func (s *App) results(c *ui.Context) {
-	t := c.Theme()
-	title, empty := "RESULTS", "Run a query to see its rows."
-	if tab, ok := s.core.ActiveTab(); ok && tab.Mode == app.ModeTable {
-		// The grid that lists the rows lands in M4; until then the tab
-		// names its table and says what it holds.
-		title, empty = tab.Table, "No rows loaded."
-	}
-	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(8).Children(func() {
-		ui.Text(c, title).FontSize(11).FontWeight(600).TextColor(t.TextMuted).SingleLine()
-		ui.Spacer(c)
-	})
-	ui.Divider(c)
-	ui.Box(c).Grow(1).FillWidth().Center().Children(func() {
-		ui.Text(c, empty).FontSize(12).TextColor(t.TextMuted)
 	})
 }
 
@@ -259,24 +193,5 @@ func (s *App) toasts(c *ui.Context) {
 			continue
 		}
 		c.Toast(m.Message)
-	}
-}
-
-// syncEditor moves the editor onto the active tab and writes its text back,
-// so a tab is dirty the moment it differs from what it was saved with.
-func (s *App) syncEditor() {
-	tab, ok := s.core.ActiveTab()
-	switch {
-	case !ok:
-		if s.codeTab != "" {
-			s.code.Buffer.Set("")
-			s.codeTab, s.codeVer = "", s.code.Buffer.Version()
-		}
-	case tab.ID != s.codeTab:
-		s.code.Buffer.Set(tab.SQL)
-		s.codeTab, s.codeVer = tab.ID, s.code.Buffer.Version()
-	case s.code.Buffer.Version() != s.codeVer:
-		s.codeVer = s.code.Buffer.Version()
-		s.core.SetTabSQL(tab.ID, s.code.Buffer.String())
 	}
 }

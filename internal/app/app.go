@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/egoist/mygo/ui/editor"
+
 	"seeker/internal/model"
 	"seeker/internal/pool"
 	"seeker/internal/secret"
@@ -85,6 +87,25 @@ type App struct {
 
 	toasts  []Toast
 	testGen int // counts connection tests, across dialogs
+
+	// The editors of query tabs, by tab id, and the theme they wear.
+	editors   map[string]*tabEditor
+	codeTheme *editor.Theme
+	cat       *catalog
+	warmed    warmStamp
+
+	// File tabs: the version of each file as last read or written, the
+	// autosaves waiting out their delay, the tabs whose last write was
+	// refused, and the datasource each file is bound to, newest first.
+	fileVer     map[string]string
+	autosave    map[string]*time.Timer
+	saveBlocked map[string]bool
+	bindings    []binding
+	dbLists     map[string][]string
+	dbLoading   map[string]bool
+
+	bookmarks []model.Bookmark
+	jump      *jump
 }
 
 // New opens the app's database at dbPath, imports recall's file at
@@ -103,6 +124,14 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 		pinAt: map[model.PinnedTable]int{},
 		ui:    defaultUI(),
 		saves: newSaver(),
+
+		editors:     map[string]*tabEditor{},
+		cat:         newCatalog(),
+		fileVer:     map[string]string{},
+		autosave:    map[string]*time.Timer{},
+		saveBlocked: map[string]bool{},
+		dbLists:     map[string][]string{},
+		dbLoading:   map[string]bool{},
 	}
 	a.tabs.Active = -1
 	a.tree.init()
@@ -137,6 +166,11 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 	} else if err == nil {
 		a.restoreTabs(saved)
 	}
+	if err := db.Setting(ctx, settingBindings, &a.bindings); err != nil && !errors.Is(err, store.ErrNoSetting) {
+		a.toast("Could not read the file bindings: " + err.Error())
+	}
+	a.bindings = a.bindings[:min(len(a.bindings), maxBindings)]
+	a.loadBookmarks()
 	a.savedUI = a.ui
 	a.snapshotTabs()
 	return a, nil
@@ -157,6 +191,7 @@ func (a *App) Close() {
 	if a.tree.filterTimer != nil {
 		a.tree.filterTimer.Stop()
 	}
+	a.flushAutosaves()
 	// Writes still waiting out their delay happen now, before the store
 	// closes, and later ones are dropped.
 	a.saves.flush()

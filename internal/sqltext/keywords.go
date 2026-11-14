@@ -26,3 +26,12 @@ func wordSet(words string) map[string]bool {
 	}
 	return set
 }
+
+// Keywords lists the words the editor offers for the dialect, lower case as
+// recall's lexicon spells them.
+func Keywords(d Dialect) []string {
+	if d == MySQL {
+		return strings.Fields(mysqlKeywords)
+	}
+	return strings.Fields(postgresKeywords)
+}

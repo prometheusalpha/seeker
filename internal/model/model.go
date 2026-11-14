@@ -48,6 +48,14 @@ type Bookmark struct {
 	LineHash string
 }
 
+// Datasource is where a SQL tab or file runs: the connection, and the
+// database and schema within it.
+type Datasource struct {
+	Conn     string `json:"connectionId"`
+	Database string `json:"database"`
+	Schema   string `json:"schema"`
+}
+
 type PinnedTable struct {
 	ConnectionID string
 	Database     string

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,15 +54,26 @@ func fixture(t *testing.T, p model.Profile, password string) {
 // pump stands in for the window's thread: work published through Update is
 // applied by the test when it asks for a frame, as the window would.
 type pump struct {
-	q []func()
+	mu sync.Mutex
+	q  []func()
 }
 
-func (p *pump) update(fn func()) { p.q = append(p.q, fn) }
+func (p *pump) update(fn func()) {
+	p.mu.Lock()
+	p.q = append(p.q, fn)
+	p.mu.Unlock()
+}
 
 func (p *pump) frame(tt *ui.Tester) {
-	for len(p.q) > 0 {
+	for {
+		p.mu.Lock()
+		if len(p.q) == 0 {
+			p.mu.Unlock()
+			break
+		}
 		fn := p.q[0]
 		p.q = p.q[1:]
+		p.mu.Unlock()
 		fn()
 	}
 	tt.Frame()

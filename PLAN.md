@@ -182,13 +182,15 @@ Gotchas:
 - Sticky gắn lên ô (con của row) và header phải đi cùng `followX`. Kiểm bằng test, đừng suy từ docs.
 - Accessibility: cột không build vẫn phải báo đúng tổng số cột cho assistive tech nếu được.
 
-### F2 (fork): API toạ độ cho editor (trước M3)
+### F2 (fork): API toạ độ cho editor (trước M3) ✅ (2026-11-13)
 
 Phạm vi: `editor.State` thêm cách lấy toạ độ màn hình của một offset (vd. `Rect(offset)` hoặc `ScrollX()` + `TextX()`), đủ để vẽ viền 4 cạnh bao statement "tới ký tự xa nhất" (recall 7.2/9.3) bằng `DrawOver`. Test trong fork.
 
 What should know: nội bộ có `ed.scrollX`, `ed.textX`, `ed.scrollY` (`ui/editor/editor.go`, `build.go:136` vẽ caret bằng `ed.textX+cr.X-ed.scrollX`). Soft wrap: một dòng nhiều hàng, `LineTop` có thể là ước lượng trong vài frame với dòng xa viewport.
 
 Gotchas: fold ẩn dòng; tab và ký tự rộng; RTL. Trong lúc chờ F2, dùng `LineBackgrounds` (tô nền) cho statement đang đứng.
+
+Kết quả: `State.Rect(off) (ui.Rect, bool)` (toạ độ caret theo byte offset, tính từ góc trên trái hộp editor, đã trừ scroll và cộng gutter; false khi dòng bị fold), `ScrollX()`, `TextX()`. Test `ui/editor/rect_test.go` (offset, fold, soft wrap, scroll). Chưa commit trong fork.
 
 ### M2: Shell thật (kết nối, duyệt schema, tab)
 
@@ -232,7 +234,7 @@ Kết quả (đã làm, chờ anh test trong app rồi mới tick):
 - Sửa thêm (nhẹ): unpin trả bảng về thứ tự server; kéo tab qua đường phân cách pinned thì pin/unpin; connection lost hiện dòng lỗi thay vì tự reconnect im lặng; Discard không sống lại khi mở lại tab; Close others/all chờ hộp thoại rồi mới đóng tab sạch; kết quả Test cũ không rơi vào dialog mới.
 - Test: đi hết cây trên PG thật và MySQL thật, đi hết click path trên `ui.Tester` (connect, mở database/schema/table, pin, drag tab, dialog đóng tab, dialog connection, dialog databases), cancel connect với listener treo, restart giữ theme/tab.
 
-### M3: SQL editor
+### M3: SQL editor ✅ (2026-11-14)
 
 Phạm vi:
 - Một `editor.State` + `Buffer` mỗi tab (undo riêng).
@@ -259,6 +261,20 @@ Gotchas:
 - `Changed`/`Submitted` báo ở frame sau; đừng đọc giá trị dẫn xuất ngay trong frame đó.
 
 Xong khi: viết/chạy/stop/format/bookmark như recall; user test.
+
+Kết quả (đã làm):
+- Còn thiếu so với phạm vi: panel Snippets settings (làm ở M6), ký tự mnemonic trên gutter (`GutterMarks` chỉ vẽ chấm màu), panel SQL files (M5), grid (M4).
+- Mỗi tab query một `editor.State` + `Buffer` (`app.Editor(id)`, tạo lười từ `Tab.SQL`); `SyncEditors` mỗi frame ghi text về tab (dirty tự suy ra), bỏ editor của tab đã đóng. Phím của editor đi qua `OnInput` (đọc `PhysicalKey`, fallback `Key`), không cần `NoCommand`.
+- Smart run `⌘↵`: đang chạy → Stop; selection (bỏ qua selection chỉ có khoảng trắng); statement dưới caret; không có (caret ở dòng trống giữa hai statement) thì cả file. Nút Run chạy cả file hoặc thành Stop. Kết quả hiện từng statement khi nó về; session là session của tab (giữ `SET`), stop dùng cancel của M1.
+- Khung statement bằng F2: `StatementFrame` đo từng dòng (ký tự đầu → ký tự cuối), view vẽ `Stroke` trong `DrawOver`; dòng wrap thì cạnh phải ra mép editor; không vẽ khi có selection.
+- Lỗi: `SetDiagnostics` gạch chân từ offset lỗi (PG) tới hết token; MySQL không có vị trí nên gạch cả statement. Kết quả ghi "line L, column C". Diagnostics xoá khi chạy lại.
+- Format `⌥⇧F`: selection → statement dưới caret → cả file; goja chạy off-thread, bỏ kết quả nếu buffer đã đổi version; một bước undo; lỗi cắt dòng đầu, ≤200 ký tự. Explain `⌥⇧E`: selection → statement → cả file nếu chỉ có đúng một statement; plan hiện dạng text thô tới khi M6 có viewer.
+- Completion: bảng (sau FROM/JOIN/INTO/UPDATE/TABLE), cột theo bảng trong statement kể cả alias (`u.`), `schema.` → bảng của schema đó, CTE, snippet mặc định của recall theo prefix, keyword theo dialect. Cache bảng/cột 5 phút (lỗi 10 giây) trong `app/catalog.go`, nguội thì nạp nền và hỏi lại khi về (recall chờ tới 250 ms, ở đây không chặn phím). Tab hiện ra thì nạp trước bảng của schema và cột của tối đa 25 bảng nó nhắc tới. `sqltext/scope.go` viết lại scanner của recall bằng token (Go RE2 không có lookbehind/lookahead).
+- File: autosave 1.5s, ghi guarded theo sha256 (version đọc/ghi gần nhất; tab restore từ store dùng sha của `SavedSQL`); lệch hoặc mất file thì từ chối, tab giữ dirty và tắt autosave tới khi user lưu tay, toast có nút Overwrite. `⌘S` = ghi, tab nháp thì Save As bằng hộp thoại native `mygo.Dialog.Save` (recall bắt phải mở folder trong panel Files trước). Thoát app flush autosave đang chờ.
+- Datasource picker trên run bar (connection → database), gán cho cả file; binding lưu ở settings `fileBindings`, mới nhất trước, tối đa 200. `OpenFile`/`ResolveDatasource` có sẵn cho panel files (M5).
+- Bookmark: `Ctrl+Shift+<ký tự>` (phím vật lý) hoặc `Ctrl+F11` rồi ký tự (Esc huỷ; text của phím đó bị nuốt), chỉ cho tab có file; mỗi dòng một mnemonic (store lấy lại từ mnemonic khác trên dòng đó). Nhảy `⌘<ký tự>` ở cấp cửa sổ, chỉ đăng ký cho mnemonic đang có và đăng ký sau các phím của app nên ⌘W thắng. Tìm lại dòng theo hash khi file bị sửa. Gutter chỉ có chấm màu (`GutterMarks` không vẽ chữ), nên chưa thấy ký tự mnemonic trên gutter.
+- Không có panel Snippets settings, SQL files panel (M5), grid (M4: kết quả hiện 12 dòng đầu dạng text).
+- Test: `sqltext/scope_test.go`, `app/editor_test.go` (buffer riêng mỗi tab, smart target, frame, format, completion, file guard, Save As, binding, bookmark, phím), `app/editor_live_test.go` (PG và MySQL thật: chạy, lỗi + diagnostics, SET giữ qua lần chạy, Stop, Explain, completion từ catalog thật), `view/editor_test.go` (⌘↵, ⌥⇧F, Stop, bookmark/⌘W). `go test -race` xanh cho app/view/sqltext.
 
 ### M4: Result grid + table tab
 

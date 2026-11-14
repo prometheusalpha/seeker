@@ -292,6 +292,7 @@ func (a *App) bump() {
 }
 
 func (a *App) dropConn(id string) {
+	a.cat.forget(id)
 	for n := range a.tree.kids {
 		if n.Conn == id {
 			delete(a.tree.kids, n)

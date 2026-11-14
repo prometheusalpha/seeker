@@ -3,6 +3,7 @@ package view
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -27,34 +28,49 @@ type renameState struct {
 func (s *App) tabStrip(c *ui.Context, pal palette) {
 	t := c.Theme()
 	s.tabKeys(c)
-	strip := ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 6).Gap(2)
+	strip := ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 10).Gap(6)
 	ren := ui.Local(strip, "rename", func() renameState { return renameState{} })
 	strip.Children(func() {
-		// Actions run as their pill builds (a close, a menu choice), so the
-		// loop reads a snapshot: a close mid-loop must not shift the tab
-		// under the next index.
-		tabs := append([]app.Tab(nil), s.core.Tabs().Items...)
-		vis := s.core.VisibleTabs()
-		pinned := 0
-		for _, raw := range vis {
-			if raw < len(tabs) && tabs[raw].Pinned {
-				pinned++
-			}
-		}
-		for i, raw := range vis {
-			if raw >= len(tabs) {
-				break
-			}
-			if pinned > 0 && pinned < len(vis) && i == pinned {
-				ui.Box(c).Width(1).Height(16).Background(t.Border)
-			}
-			s.tabPill(c, pal, i, tabs[raw], ren)
+		// The pills sit in a capsule that scrolls when they outgrow the
+		// strip, and the new-tab button stays out of it.
+		if len(s.core.VisibleTabs()) > 0 {
+			ui.ScrollHorizontal(c).Shrink(1).MinWidth(0).Children(func() {
+				track(t, ui.Row(c)).Children(func() {
+					s.tabPills(c, pal, ren)
+				})
+			})
 		}
 		if iconButton(c, icons.Plus, "New query tab").Clicked() {
 			s.core.NewQueryTab()
 		}
 		s.renameDialog(c, ren)
 	})
+}
+
+// tabPills draws the pills, pinned ones first, with a hairline between the
+// pinned and the rest.
+func (s *App) tabPills(c *ui.Context, pal palette, ren *renameState) {
+	t := c.Theme()
+	// Actions run as their pill builds (a close, a menu choice), so the
+	// loop reads a snapshot: a close mid-loop must not shift the tab
+	// under the next index.
+	tabs := append([]app.Tab(nil), s.core.Tabs().Items...)
+	vis := s.core.VisibleTabs()
+	pinned := 0
+	for _, raw := range vis {
+		if raw < len(tabs) && tabs[raw].Pinned {
+			pinned++
+		}
+	}
+	for i, raw := range vis {
+		if raw >= len(tabs) {
+			break
+		}
+		if pinned > 0 && pinned < len(vis) && i == pinned {
+			ui.Box(c).Width(1).Height(14).Background(t.Border)
+		}
+		s.tabPill(c, pal, i, tabs[raw], ren)
+	}
 }
 
 // tabPill is one tab: its icon, its title and the mark that it is unsaved
@@ -67,36 +83,48 @@ func (s *App) tabPill(c *ui.Context, pal palette, index int, tab app.Tab, ren *r
 		chosen = true
 	}
 	dirty := s.core.TabDirty(tab)
-	pill := ui.ButtonBase(c.Key("tab-"+tab.ID)).Height(26).Padding(0, 8).Gap(6).Radius(6).MaxWidth(tabPillWidth)
+	pill := ui.ButtonBase(c.Key("tab-"+tab.ID)).Height(tabH).Padding(0, 6, 0, 12).Gap(6).Radius(tabH / 2).MaxWidth(tabPillWidth).
+		Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
+	hovered := pill.Hovered()
 	switch {
 	case chosen:
-		pill.Background(pal.Active)
-	case pill.Hovered():
+		// A pill lifts off its track softly: on a dark theme the island's
+		// own shadow is too heavy under something this small.
+		sh := shadowOf(t)
+		if t.Dark {
+			sh = ui.RGBA(0, 0, 0, 0.2)
+		}
+		pill.Background(raised(t, pal)).Shadow(0, 1, 2, 0, sh).Shadow(0, 2, 8, 0, sh)
+	case hovered:
 		pill.Background(t.SurfaceHover)
 	}
-	icon, muted := ink(t, chosen)
+	// The pill is its own face, not the accent-filled row ink() is for.
+	text := t.TextMuted
+	if chosen {
+		text = t.Text
+	}
 	pill.Children(func() {
 		if tab.Mode == app.ModeTable {
-			ui.Icon(c, icons.Table).FontSize(13).TextColor(icon)
+			ui.Icon(c, icons.Table).FontSize(14).TextColor(t.TextMuted)
 		} else {
-			ui.Icon(c, icons.FileCode).FontSize(13).TextColor(icon)
+			ui.Icon(c, icons.FileCode).FontSize(14).TextColor(t.TextMuted)
 		}
-		title := tab.Title
+		ui.Text(c, tab.Title).FontSize(12.5).FontWeight(500).SingleLine().TextColor(text)
 		if dirty {
-			title += " *"
+			ui.Box(c).Size(6, 6).Radius(3).Background(t.TextMuted).Label("Unsaved")
 		}
-		ui.Text(c, title).FontSize(12).SingleLine().TextColor(t.Text)
-		if dirty {
-			ui.Box(c).Size(6, 6).Radius(3).Background(muted).Label("Unsaved")
-		}
-		// The close button stays on a dirty tab: closing one asks first, so
-		// hiding the button would leave the dialog unreachable by click.
-		close := ui.ButtonBase(c.Key("close-"+tab.ID)).Size(16, 16).Radius(4).
+		// The close button shows on the chosen pill and the hovered one; it
+		// is only invisible elsewhere, so a dirty tab's close, which asks
+		// first, stays reachable by click.
+		close := ui.ButtonBase(c.Key("close-"+tab.ID)).Size(20, 20).Radius(10).
 			Label("Close " + tab.Title).Tooltip("Close tab")
+		if !chosen && !hovered {
+			close.Opacity(0)
+		}
 		if close.Hovered() {
 			close.Background(t.SurfaceHover)
 		}
-		close.Children(func() { ui.Icon(c, icons.X).FontSize(11).TextColor(muted) })
+		close.Children(func() { ui.Icon(c, icons.X).FontSize(12).TextColor(t.TextMuted) })
 		if close.Clicked() {
 			s.core.CloseTab(tab.ID)
 		}

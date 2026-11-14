@@ -5,6 +5,7 @@ package view
 
 import (
 	"slices"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -14,10 +15,14 @@ import (
 	"seeker/internal/theme"
 )
 
-// Islands round only a little, so the panels read as panels, not cards.
+// Islands are soft cards, as megafactory's: generous corners, a roomy gap
+// between them, and headers tall enough to breathe.
 const (
-	islandRadius = 8
-	islandGap    = 6
+	islandRadius = 12
+	islandGap    = 8
+	titleH       = 44
+	headerH      = 40
+	tabH         = 26
 )
 
 type palette = theme.Islands
@@ -107,32 +112,62 @@ func gapSplit(c *ui.Context, pal palette, vertical bool, build func(first, secon
 			ui.Themed(c, base).Background(ui.Transparent).Fill().Padding(pad...).Children(content)
 		}
 	}
-	first, second := pane([]float32{0, 0, 0, half}), pane([]float32{0, half, 0, 0})
+	// Padding runs top, right, bottom, left: each pane keeps its half of
+	// the gap on the side that faces the other.
+	first, second := pane([]float32{0, half, 0, 0}), pane([]float32{0, 0, 0, half})
 	if vertical {
 		first, second = pane([]float32{0, 0, half, 0}), pane([]float32{half, 0, 0, 0})
 	}
 	ui.Themed(c, &hidden).Background(ui.Transparent).Fill().Children(func() { build(first, second) })
 }
 
+// shadowOf is the color islands and raised pills cast: faint on a light
+// canvas, deeper on a dark one.
+func shadowOf(t *ui.Theme) ui.Color {
+	if t.Dark {
+		return ui.RGBA(0, 0, 0, 0.35)
+	}
+	return ui.RGBA(40, 40, 60, 0.07)
+}
+
 func island(c *ui.Context, pal palette) ui.Element {
-	return ui.Column(c).Background(pal.Island).Radius(islandRadius).Border(1, pal.Edge).Clip()
+	sh := shadowOf(c.Theme())
+	return ui.Column(c).Background(pal.Island).Radius(islandRadius).Border(1, pal.Edge).Clip().
+		Shadow(0, 1, 2, 0, sh).Shadow(0, 6, 22, -2, sh)
 }
 
 func iconButton(c *ui.Context, icon *ui.SVG, label string) ui.Element {
 	t := c.Theme()
-	b := ui.ButtonBase(c.Key(label)).Size(28, 28).Radius(6).Label(label).Tooltip(label)
+	b := ui.ButtonBase(c.Key(label)).Size(30, 30).Radius(11).Label(label).Tooltip(label)
 	if b.Hovered() {
 		b.Background(t.SurfaceHover)
 	}
+	b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
 	b.Children(func() { ui.Icon(c, icon).FontSize(15).TextColor(t.TextMuted) })
 	return b
+}
+
+// track styles a row of tabs as the capsule that holds them.
+func track(t *ui.Theme, row ui.Element) ui.Element {
+	return row.Height(tabH+4).Padding(2).Gap(2).Radius((tabH+4)/2).Shrink(0).
+		Background(t.Text.Alpha(0.055)).Border(0.5, t.Text.Alpha(0.06)).AlignItems(ui.Center)
+}
+
+// raised is the face of the chosen pill in a track: lifted off the track
+// rather than sunk into it: the island's own color on a light theme, a
+// veil of the text color on a dark one, which keeps the track's tint.
+func raised(t *ui.Theme, pal palette) ui.Color {
+	if t.Dark {
+		return t.Text.Alpha(0.12)
+	}
+	return pal.Island
 }
 
 func (s *App) titleBar(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
 	u := s.core.UI()
-	ui.Row(c).Height(max(bar.Height, 40)).FillWidth().AlignItems(ui.Center).Gap(2).
+	ui.Row(c).Height(max(bar.Height, titleH)).FillWidth().AlignItems(ui.Center).Gap(2).
 		Padding(0, bar.Right+10, 0, bar.Left+10).DragWindow().Children(func() {
 		if iconButton(c, icons.PanelLeft, "Toggle connections").Clicked() {
 			u.HideSidebar = !u.HideSidebar
@@ -140,7 +175,7 @@ func (s *App) titleBar(c *ui.Context) {
 		ui.Spacer(c)
 		// The quick open field arrives with search (M5); it shows the keys
 		// it will take but takes none until then.
-		ui.Row(c).Width(360).Height(26).Radius(6).Padding(0, 10).Gap(8).
+		ui.Row(c).Width(360).Height(30).Radius(15).Padding(0, 14).Gap(8).
 			Background(t.Text.Alpha(0.06)).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icons.Search).FontSize(13).TextColor(t.TextMuted)
 			ui.Text(c, "Search tables, files, connections").FontSize(12).TextColor(t.TextMuted).SingleLine()
@@ -197,9 +232,10 @@ func (s *App) workspace(c *ui.Context, pal palette) {
 // and format arrive with the editor (M3) and the plan viewer (M6).
 func (s *App) runBar(c *ui.Context) {
 	t := c.Theme()
-	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 8).Gap(6).Children(func() {
+	ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(8).Children(func() {
 		ui.Button(c.Key("run"), "Run").Height(26).Disabled(true).Tooltip("Running SQL arrives with the editor (M3)")
-		ui.Row(c).Height(26).Radius(6).Padding(0, 8).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Height(28).Radius(14).Padding(0, 12).Gap(6).AlignItems(ui.Center).
+			Background(t.Text.Alpha(0.055)).Children(func() {
 			ui.Icon(c, icons.Database).FontSize(12).TextColor(t.Accent)
 			ui.Text(c, s.datasourceLabel()).FontSize(12).SingleLine()
 			ui.Icon(c, icons.ChevronDown).FontSize(12).TextColor(t.TextMuted)
@@ -240,7 +276,7 @@ func (s *App) results(c *ui.Context) {
 		// names its table and says what it holds.
 		title, empty = tab.Table, "No rows loaded."
 	}
-	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(8).Children(func() {
+	ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 16).Gap(8).Children(func() {
 		ui.Text(c, title).FontSize(11).FontWeight(600).TextColor(t.TextMuted).SingleLine()
 		ui.Spacer(c)
 	})

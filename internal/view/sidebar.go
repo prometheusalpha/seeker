@@ -19,8 +19,8 @@ func (s *App) sidebar(c *ui.Context, pal palette) {
 	roots := s.core.Roots()
 
 	island(c, pal).Fill().Children(func() {
-		ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 8).Gap(2).Children(func() {
-			ui.Text(c, "CONNECTIONS").FontSize(11).FontWeight(600).TextColor(t.TextMuted).PaddingStart(4)
+		ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 10, 0, 16).Gap(2).Children(func() {
+			ui.Text(c, "CONNECTIONS").FontSize(11).FontWeight(600).TextColor(t.TextMuted)
 			ui.Spacer(c)
 			if iconButton(c, icons.Plus, "New connection").Clicked() {
 				s.core.OpenConnectionDialog("")
@@ -29,7 +29,7 @@ func (s *App) sidebar(c *ui.Context, pal palette) {
 				s.core.CollapseAll()
 			}
 		})
-		ui.Box(c).Padding(0, 8, 6, 8).Children(func() {
+		ui.Box(c).Padding(0, 12, 8, 12).Children(func() {
 			if ui.SearchField(c, s.core.TreeFilter()).Placeholder("Search tables").Label("Search tables").FillWidth().Changed() {
 				s.core.FilterChanged()
 			}

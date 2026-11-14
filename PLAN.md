@@ -190,7 +190,7 @@ What should know: nội bộ có `ed.scrollX`, `ed.textX`, `ed.scrollY` (`ui/edi
 
 Gotchas: fold ẩn dòng; tab và ký tự rộng; RTL. Trong lúc chờ F2, dùng `LineBackgrounds` (tô nền) cho statement đang đứng.
 
-Kết quả: `State.Rect(off) (ui.Rect, bool)` (toạ độ caret theo byte offset, tính từ góc trên trái hộp editor, đã trừ scroll và cộng gutter; false khi dòng bị fold), `ScrollX()`, `TextX()`. Test `ui/editor/rect_test.go` (offset, fold, soft wrap, scroll). Chưa commit trong fork.
+Kết quả: `State.Rect(off) (ui.Rect, bool)` (toạ độ caret theo byte offset, tính từ góc trên trái hộp editor, đã trừ scroll và cộng gutter; false khi dòng bị fold), `ScrollX()`, `TextX()`. Test `ui/editor/rect_test.go` (offset, fold, soft wrap, scroll). Đã commit trong fork: `a1d1d92c`.
 
 ### M2: Shell thật (kết nối, duyệt schema, tab)
 

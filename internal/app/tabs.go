@@ -309,6 +309,10 @@ func (a *App) forceClose(id string) {
 	a.cancelAutosave(id)
 	delete(a.saveBlocked, id)
 	delete(a.editors, id)
+	if tv := a.tables[id]; tv != nil && tv.cancel != nil {
+		tv.cancel()
+	}
+	delete(a.tables, id)
 	switch {
 	case len(a.tabs.Items) == 0:
 		a.tabs.Active = -1

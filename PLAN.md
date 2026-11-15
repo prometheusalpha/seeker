@@ -164,7 +164,7 @@ Kết quả (đã làm, khác recall ở đâu):
 - `formatCell` dùng `FixedZone(+07)` thay vì `Asia/Bangkok` (ngày trước 1920 recall lệch LMT nhưng vẫn ghi `+07`). `sqlInsert` ghi binary dạng hex (`X'..'`, `'\x..'`), recall ghi chuỗi base64 → insert sai byte.
 - `sqltext` có thêm `clause.go` (gợi ý WHERE/ORDER BY) và import `rank` (fuzzy).
 
-### F1 (fork): `ui.Table` ảo hoá cột + cột ghim (trước M4)
+### F1 (fork): `ui.Table` ảo hoá cột + cột ghim (trước M4) ✅ (2026-11-15)
 
 Phạm vi:
 - `ListState` hoặc `TableColumn` thêm option opt-in: ảo hoá cột (chỉ build cột trong `[scrollX, scrollX+viewW]` của frame trước, phần ngoài là khối trống bằng tổng độ rộng) và `Frozen` (ghim cột khi cuộn ngang). Mặc định tắt: hành vi cũ giữ nguyên.
@@ -276,7 +276,7 @@ Kết quả (đã làm):
 - Không có panel Snippets settings, SQL files panel (M5), grid (M4: kết quả hiện 12 dòng đầu dạng text).
 - Test: `sqltext/scope_test.go`, `app/editor_test.go` (buffer riêng mỗi tab, smart target, frame, format, completion, file guard, Save As, binding, bookmark, phím), `app/editor_live_test.go` (PG và MySQL thật: chạy, lỗi + diagnostics, SET giữ qua lần chạy, Stop, Explain, completion từ catalog thật), `view/editor_test.go` (⌘↵, ⌥⇧F, Stop, bookmark/⌘W). `go test -race` xanh cho app/view/sqltext.
 
-### M4: Result grid + table tab
+### M4: Result grid + table tab ✅ (2026-11-15)
 
 Phạm vi:
 - Grid trên `ui.Table` (đã có F1): bật ảo hoá cột + cột số dòng ghim; độ rộng tự tính theo nội dung (min/max); chọn vùng (click, Shift+click, Shift+mũi tên), sum vùng chọn (bỏ ô không hợp lệ), copy TSV, Copy as INSERT, export CSV (RFC 4180) / JSON, ẩn/hiện cột, kéo đổi chỗ cột, màu chữ theo kiểu dữ liệu, `NULL` mờ, ô focus có hộp xem giá trị đầy đủ, tooltip header/cột không bị cắt.
@@ -300,6 +300,31 @@ Gotchas:
 - Recall TODO "reload table mất thứ tự cột đã đổi": thuộc backlog, nhưng đừng tạo thêm bug này (lưu `Columns` theo bảng).
 
 Xong khi: ngang `ResultGrid.vue`, cuộn mượt với 100 cột, user test.
+
+Kết quả (đã làm; **chưa test tay trong app** (`go tool mygo dev`), anh test rồi mới coi là chốt):
+- F1 trong fork: `ListState.VirtualColumns` (mặc định tắt) và `TableColumn.Frozen` (commit `3e104a46`, `d4dfc45e`). Grid bật ảo hoá, cột số dòng là `RowHeader`+`Fixed`+`Frozen`.
+- Đo (Tester vẽ bằng CPU, chỉ để so sánh): 20000 dòng × 100 cột, cuộn dọc 2.9ms, cuộn ngang 1.9ms, frame đứng yên 0.8ms (M0, chưa ảo hoá: 30ms / 8ms).
+- State: `app/gridstate.go` (`ResultGrid`: `ui.ListState` + `Selection`, cột ẩn, độ rộng, edit chờ commit, sum/copy/INSERT/CSV/JSON), `app/tabletab.go` (`TableView` mỗi table tab: WHERE/ORDER BY, trang, count, load, sort, commit), `app/gridexport.go`. View: `view/gridview.go` (bảng, ô, menu, hộp giá trị), `view/tablebar.go` (thanh lọc, phân trang), `view/results.go` (Result | Explain, chọn statement, status bar). Thuần: `grid/export.go` (TSV/CSV/JSON), `sqltext/clauseinput.go` (gợi ý WHERE/ORDER BY).
+- Query tab: mỗi statement một `ResultGrid` tạo lười, bỏ khi chạy lại (selection/cột cũ không dính sang kết quả mới). Batch nhiều statement: tab `#n · thời gian` (≤8), quá thì menu. Explain vẫn là text thô (M6).
+- Table tab: `SELECT * … WHERE … ORDER BY … LIMIT/OFFSET` (bỏ `OFFSET 0`), trang 100/500/1000/2000, về trang 1 khi đổi lọc/cỡ trang, trang tiếp suy từ trang đầy (không COUNT), nút Count theo WHERE (bỏ khi đổi WHERE). Chỉ một statement: WHERE có `;` thứ hai bị từ chối trước khi gửi. Lỗi lọc giữ nguyên lưới cũ và tô viền ô bị nghi. Layout cột (thứ tự, độ rộng, cột ẩn) giữ khi reload nếu cột không đổi.
+- Sort: `⌃⇧↑/↓` và menu, **không** sort khi bấm tên cột. Sort ghi vào ô ORDER BY (ô đó là state duy nhất của sort). Kết quả của query không sort/sửa/INSERT được (không có bảng phía sau).
+- Chọn vùng, Shift+click/mũi tên, kéo chọn, `⌘A`, kéo đổi chỗ cột: do `ui.Table` (`CellSelect`). `⌘C` copy TSV vùng chọn (đọc từ result, không từ ô đã dựng). Copy INSERT (table tab, mọi cột, giá trị y như server trả), Export CSV/JSON toàn bộ result, Columns (ẩn/hiện).
+- Sửa ô (table tab có PK, PK nằm trong result): Enter/double-click/menu mở editor, Enter chờ commit (ô vàng), `Save`/`⌘S` ghi `UpdateRows` một transaction rồi đọc lại trang, lỗi thì giữ edit. `Set NULL` ở menu ô.
+- `⌘R` đọc lại trang, `⌘L` vào ô WHERE, `Esc` đóng editor ô.
+- Test: unit `app/gridstate_test.go`, `app/tabletab_test.go`, `grid/export_test.go`, `sqltext/clauseinput_test.go`; live PG + MySQL `app/tabletab_live_test.go` (phân trang, lọc, sort, count, lỗi lọc, commit, commit bị từ chối); live PG qua cửa sổ `view/grid_live_test.go` (chọn/sum/copy/menu/ẩn cột, ảo hoá 150 cột + cột số dòng đứng yên, hộp giá trị, kéo header, table tab đầy đủ). `-race` xanh.
+
+Còn thiếu so với spec / ghi chú:
+- Header chưa có mũi tên chiều sort (chỉ ô ORDER BY nói chiều).
+- Gợi ý WHERE/ORDER BY dùng `ui.Autocomplete`: chỉ gợi ý cho từ ở **cuối** ô, chỉ khớp chứa/tiền tố (recall khớp fuzzy, gợi ý theo vị trí con trỏ).
+- Hộp giá trị đầy đủ chỉ hiện khi ô bị cắt hoặc có xuống dòng (recall hiện cho mọi ô focus).
+- Độ rộng cột tính bằng `grid.GridCharWidth` cố định (8px), chưa đo font thật (`grid.CharWidth(measure)` có sẵn). Font ô Menlo 12.
+- Layout cột, cột ẩn, WHERE/ORDER BY, trang chỉ sống trong phiên (recall cũng không lưu); chưa vào bảng `settings`.
+- Export dùng hộp thoại Save của hệ thống (recall chọn folder rồi ghi `<tab>.csv`). JSON giữ khoá trùng nếu hai cột trùng tên.
+- Bảng không có PK, hoặc PK không nằm trong result: ô chỉ đọc, không báo lý do. Reload (`⌘R`, đổi lọc) bỏ edit chờ commit mà không hỏi.
+- Giá trị sửa gửi dạng text; không kiểm kiểu ở client, server từ chối thì toast và giữ edit.
+- Sau commit, thứ tự dòng khi không có ORDER BY là thứ tự server trả (PG đẩy dòng vừa UPDATE xuống cuối); muốn ổn định phải đặt ORDER BY.
+- `Copy as INSERT` ghi cột theo thứ tự result, không theo thứ tự anh kéo; không có ở kết quả của query.
+- Tooltip ô chỉ có khi text rộng hơn cột; tooltip header (tên + kiểu) chưa có test.
 
 ### M5: Files, Quick open, Find in files
 

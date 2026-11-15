@@ -28,7 +28,10 @@ type App struct {
 	settingsOpen bool
 	systemDark   bool
 
-	resultView int
+	// refocusGrid hands the keyboard back to the grid after a cell editor
+	// closes; focusWhere moves it to the WHERE field (⌘L).
+	refocusGrid bool
+	focusWhere  bool
 }
 
 func New(core *app.App) *App {
@@ -60,6 +63,7 @@ func (s *App) View(c *ui.Context) {
 	s.toasts(c)
 	s.bookmarkKeys(c)
 	s.core.SyncEditors()
+	s.core.TableSync()
 	s.core.Sync()
 	s.core.ConnSync()
 }

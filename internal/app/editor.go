@@ -41,7 +41,25 @@ type tabEditor struct {
 	swallow  time.Time
 
 	run runState
+
+	// grids are the grids of the run's results, by statement, made when
+	// first shown; pane is which statement and which view the area shows.
+	grids map[int]*ResultGrid
+	pane  ResultPane
 }
+
+// ResultPane is what the area under a query tab's editor shows: the
+// statement whose result is in view, and Result or Explain.
+type ResultPane struct {
+	Shown int
+	View  int
+}
+
+// The views of the result area.
+const (
+	ViewResult  = 0
+	ViewExplain = 1
+)
 
 // Editor returns the editor of a query tab, made when it is first asked
 // for from the tab's SQL; false for a tab that has none.

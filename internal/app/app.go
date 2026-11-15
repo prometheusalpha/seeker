@@ -106,6 +106,9 @@ type App struct {
 
 	bookmarks []model.Bookmark
 	jump      *jump
+
+	// The rows of table tabs, by tab id.
+	tables map[string]*TableView
 }
 
 // New opens the app's database at dbPath, imports recall's file at

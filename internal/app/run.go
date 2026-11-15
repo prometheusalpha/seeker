@@ -131,6 +131,9 @@ func (a *App) run(te *tabEditor, script string, base int) {
 	gen := r.gen
 	*r = runState{gen: gen, cancel: cancel, Running: true, Started: time.Now(), Script: script, Base: base,
 		Plan: r.Plan, PlanErr: r.PlanErr, PlanSQL: r.PlanSQL}
+	// The new run's rows get new grids: a selection or a hidden column of
+	// the last run's must not stick to them.
+	te.grids, te.pane = nil, ResultPane{}
 	te.st.SetDiagnostics(te.st.Buffer.Version(), nil)
 	version := te.st.Buffer.Version()
 	id := te.id
@@ -280,6 +283,7 @@ func (a *App) Explain(id, sql string) {
 	a.ensureTabConnected(t)
 	cs := a.conn(t.Conn)
 	te.run.Explaining, te.run.Plan, te.run.PlanErr, te.run.PlanSQL = true, nil, "", sql
+	te.pane.View = ViewExplain
 	gen := te.run.gen
 	go func() {
 		var plan driver.Plan
@@ -369,4 +373,36 @@ func (a *App) Format(id string) {
 			}
 		})
 	}()
+}
+
+// PaneOf is what the area under a query tab's editor shows, for the view to
+// bind its switches to; nil for a tab with no editor.
+func (a *App) PaneOf(id string) *ResultPane {
+	if te := a.editors[id]; te != nil {
+		return &te.pane
+	}
+	return nil
+}
+
+// GridOf is the grid of the tab's i-th result, made the first time it is
+// asked for; nil for a result that has no rows to show (an error, or a
+// statement that returns none).
+func (a *App) GridOf(id string, i int) *ResultGrid {
+	te := a.editors[id]
+	if te == nil || i < 0 || i >= len(te.run.Results) {
+		return nil
+	}
+	if g := te.grids[i]; g != nil {
+		return g
+	}
+	res := te.run.Results[i]
+	if res.Err != nil || len(res.Columns) == 0 {
+		return nil
+	}
+	if te.grids == nil {
+		te.grids = map[int]*ResultGrid{}
+	}
+	g := NewResultGrid(res, nil)
+	te.grids[i] = g
+	return g
 }

@@ -326,7 +326,7 @@ Còn thiếu so với spec / ghi chú:
 - `Copy as INSERT` ghi cột theo thứ tự result, không theo thứ tự anh kéo; không có ở kết quả của query.
 - Tooltip ô chỉ có khi text rộng hơn cột; tooltip header (tên + kiểu) chưa có test.
 
-### M5: Files, Quick open, Find in files
+### M5: Files, Quick open, Find in files (đang làm: Files xong, còn Quick open + Find in files)
 
 Phạm vi:
 - SqlFilesPanel: nhiều folder, filter glob, tạo / đổi tên / xoá / cut / copy / paste, mở trong Finder, binding datasource theo file. Panel kéo đổi độ rộng được (hiện đang cố định 240px).
@@ -346,13 +346,27 @@ Gotchas:
 - Đổi tên file đang mở: tab, bookmark (path), binding datasource phải đi theo.
 - Quick open fan-out nhiều connection: huỷ lượt cũ khi gõ tiếp, bỏ kết quả về muộn.
 
-Tiến độ M5 (Files panel, phần 1: cây folder; **chưa test tay**, chưa làm Quick open / Find in files / thao tác file):
+Tiến độ M5 (commit `29634d4` fix race, `81e2cef` Files phần 1, `86fab9c` Files phần 2 + sửa layout/chọn dòng). **Files panel xong về code, chưa test tay trong app** (`go tool mygo dev`); **chưa làm Quick open và Find in files**.
+
+Đã làm:
 - `internal/files`: `Scan` (đệ quy, depth 10, bỏ `IGNORE_DIRS`, thư mục trước), `Inside` (realpath, chặn symlink ra ngoài/vòng), `Match` (glob `*` `?` `{a,b}`, không phân biệt hoa thường). Test có symlink thoát folder, link vòng, link hỏng.
 - `app/sqlfiles.go`: folder lưu ở settings `sqlFiles` (`{folders, filter}`, theo real path nên cùng folder qua link chỉ mở một lần); quét ở goroutine, mỗi folder có `gen` để bỏ kết quả cũ; filter debounce 250ms. Outline khoá theo path (`ui.OutlineState[string]`); file trả `nil` con (không mũi tên), folder rỗng trả slice rỗng.
-- `view/filespanel.go`: panel **bên phải** workspace. `ui.Split` chỉ cho độ rộng của pane đầu nên split chạy `Direction(RightToLeft)`, mỗi pane bọc lại `LeftToRight`; kiểm bằng ảnh Tester. Rộng `UI.FilesW` (mặc định 240, lưu ở `layout`), nút toggle ở title bar (`UI.HideFiles`). Một click vào tên: file → `OpenFile`, folder → mở/đóng (Enter cũng vậy; mũi tên lên/xuống chỉ chọn) (không badge connection, không chấm "đang mở": tab đã cho thấy); menu chuột phải folder gốc: Scan again / Close folder.
-- Phần 2 (thao tác file; **chưa test tay**): menu chuột phải theo loại dòng (folder gốc chỉ Scan again/Close folder, không rename/xoá), `⌘X/⌘C/⌘V` khi panel có focus. `files/ops.go`: `Create` (O_EXCL, không ghi đè), `Rename` (kiểm đích trước vì rename POSIX đè im lặng; cho đổi hoa/thường), `Transfer` (từng entry, từ chối vào chính nó / trùng tên, EXDEV fallback copy+xoá, symlink copy thành symlink), `Trash` (Finder qua `osascript`, path truyền bằng argv; lỗi thì rơi về `~/.Trash`; chưa thử Finder thật), `Reveal` (`open -R`). `app/sqlfiles_ops.go`: dialog `FileDialog` (tên mới/đổi tên/xác nhận Trash), `repath` đưa tab (Path + Title), `fileVer`, binding, bookmark (`Store.RepathBookmarks`), folder đang mở, clipboard theo path mới; xoá thì tab giữ text thành bản nháp (Path rỗng), bỏ binding. Test: `files/ops_test.go`, `sqlfiles_test.go` (rename folder kéo theo tab/bookmark/binding, xoá, dán cut/copy), `filespanel_test.go` (menu, rename qua dialog).
-- Chưa làm trong M5: glob filter đã có ô nhập nhưng chưa test tay, panel không multi-select (mỗi lần một entry), Quick open, Find in files.
-- `TestExportGridWritesFile` (M4) từng có data race: goroutine của `ExportGrid` đọc biến `pickExport` trong lúc test reset nó. Sửa: đọc picker ở goroutine gọi trước khi `go` (cũng áp cho `pickSave`, `pickFolder`).
+- `view/filespanel.go`: panel **bên phải** workspace, rộng `UI.FilesW` (mặc định 240, lưu ở `layout`), nút toggle ở title bar (`UI.HideFiles`). Một click vào tên: file → `OpenFile`, folder → mở/đóng (Enter cũng vậy; mũi tên lên/xuống chỉ chọn). Không có badge connection và không có chấm "đang mở" (tab đã cho thấy).
+- Thao tác file: menu chuột phải theo loại dòng (folder gốc chỉ New/Paste/Reveal/Scan again/Close folder, không rename/xoá), `⌘X/⌘C/⌘V` khi panel có focus. `files/ops.go`: `Create` (O_EXCL, không ghi đè), `Rename` (kiểm đích trước vì rename POSIX đè im lặng; cho đổi hoa/thường), `Transfer` (từng entry, từ chối vào chính nó / trùng tên, EXDEV fallback copy+xoá, symlink copy thành symlink), `Trash` (Finder qua `osascript`, path truyền bằng argv; lỗi thì rơi về `~/.Trash`; **chưa thử Finder thật**), `Reveal` (`open -R`). `app/sqlfiles_ops.go`: dialog `FileDialog` (tên mới/đổi tên/xác nhận Trash), `repath` đưa tab (Path + Title), `fileVer`, binding, bookmark (`Store.RepathBookmarks`), folder đang mở, clipboard theo path mới; xoá thì tab giữ text thành bản nháp (Path rỗng), bỏ binding.
+- Test: `files/scan_test.go`, `files/ops_test.go`, `app/sqlfiles_test.go` (rename folder kéo theo tab/bookmark/binding, xoá, dán cut/copy), `store` (`TestRepathBookmarks`), `view/filespanel_test.go` (bố cục, click folder/file, chọn dòng, menu, rename qua dialog, khoảng cách island, chiều kéo divider).
+
+Gotchas học được (đừng lặp lại):
+- `ui.Split` chỉ cho độ rộng pane **đầu** nên panel bên phải phải chạy split `RightToLeft`. `Direction` phải đặt trên một `ui.Box` **bọc ngoài, trước khi dựng Split** (Split đọc hướng lúc dựng để đảo chiều kéo; đặt `.Direction` lên chính Split thì layout đảo mà kéo trái lại thành hẹp đi). Mỗi pane bọc lại `LeftToRight`.
+- `gapSplit` có tham số `rtl`: hai nửa khoảng cách island phải đổi phía, nếu không panel phải chỉ cách ~4px thay vì 10px.
+- Bắt `row.Clicked()` ở từng dòng thì danh sách không còn tự chọn dòng: phải gán `*FilesRow()` bằng tay, không thì không tô sáng.
+- Mũi tên outline xoay bằng animation: trong Tester phải `tt.Advance(...)` mới thấy mũi tên xuống.
+- Picker native (`pickSave`, `pickExport`, `pickFolder`) phải đọc ở goroutine gọi trước `go func()`, test mới đổi biến được mà không race (đã sửa `TestExportGridWritesFile`).
+- Test cửa sổ không cần Postgres: `filesWindow` (app + Tester), hoặc `editorWindow` với profile giả (`127.0.0.1:1`) khi cần mở tab.
+
+Chưa làm / ghi chú:
+- Panel không multi-select (mỗi lần một entry); chưa có Reveal/Trash test với Finder thật; ô glob filter chưa test tay.
+- Quick open `⌘P` (bảng mọi connection fan-out, file, connection; `internal/rank` có sẵn; huỷ lượt cũ khi gõ tiếp, bỏ kết quả về muộn). Ô search ở title bar đã vẽ nhưng chưa nhận phím.
+- Find in files `⌘⇧F`: cần bundle `rg 15.2.0` (pin sha256), `rg --json`, kill call cũ, `splitMask` brace glob; Enter mở file và chọn đúng chỗ (cần API chọn vùng của editor). Nên làm sau Files panel vì chạy trên các folder đã mở.
 
 ### M6: Explain viewer, phím tắt, snippets, giao diện
 

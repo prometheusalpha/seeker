@@ -80,7 +80,7 @@ func (s *App) statementFrame(t *ui.Theme, p *ui.Painter, r ui.Rect, id string, s
 func (s *App) runBar(c *ui.Context, tab app.Tab) {
 	t := c.Theme()
 	running := s.core.Running(tab.ID)
-	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 8).Gap(6).Children(func() {
+	ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(8).Children(func() {
 		if running {
 			if ui.Button(c.Key("stop"), "Stop").Height(26).Tooltip("Stop the running query (⌘↵)").Clicked() {
 				s.core.Stop(tab.ID)

@@ -27,7 +27,7 @@ func (s *App) results(c *ui.Context) {
 		s.queryResults(c, tab)
 	default:
 		// No tab: the area is there, with nothing to show yet.
-		ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 12).Children(func() {
+		ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 16).Children(func() {
 			ui.Text(c, "RESULTS").FontSize(11).FontWeight(600).TextColor(c.Theme().TextMuted).SingleLine()
 		})
 		ui.Divider(c)
@@ -54,7 +54,7 @@ func (s *App) queryResults(c *ui.Context, tab app.Tab) {
 		pane.Shown = min(max(pane.Shown, 0), n-1)
 	}
 	g := s.core.GridOf(tab.ID, pane.Shown)
-	ui.Row(c).Height(36).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(8).Children(func() {
+	ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 16).Gap(8).Children(func() {
 		ui.Text(c, "RESULTS").FontSize(11).FontWeight(600).TextColor(t.TextMuted).SingleLine()
 		ui.Segmented(c.Key("view"), &pane.View, "Result", "Explain").Height(24)
 		if pane.View == app.ViewResult {

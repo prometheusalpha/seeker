@@ -13,7 +13,7 @@ Nguồn: `../recall` (Electrobun + Bun + Vue, ~33k dòng, 16 file test bun). Đ�
 3. App DB dùng `plugins/sqlite` của mygo, bọc sau `internal/store` để đổi được (`modernc.org/sqlite` là phương án dự phòng).
 4. Format SQL: goja + bundle `sql-formatter` (giữ y hệt recall: chỉ set dialect, giữ case, indent 2). GoSQLX đã thử và loại: viết lại SQL (`::` → `CAST`, `JOIN` → `INNER JOIN`, `LIMIT a,b` → `OFFSET`), tự viết hoa keyword, không wrap dòng dài, không thụt lề subquery/CTE.
 5. Find in files: bundle `rg` như recall.
-6. Dùng lại dữ liệu recall: import connections, bookmarks, pinned tables từ `recall.db` một lần; dùng chung service keychain `recall.connection.<id>`.
+6. Dùng lại dữ liệu recall: import connections, bookmarks, pinned tables từ `recall.db` một lần; password keychain đọc từ `recall.connection.<id>` rồi move sang `seeker.connection.<id>` (xoá item của recall sau khi ghi xong; macOS hỏi quyền một lần; sau đó dùng item của seeker).
 7. Tên hiển thị `Seeker` (`mygo.json` `name`, title cửa sổ). Module Go là `seeker`.
 8. Layout island: bo 8px, khe 6px, title bar trong suốt trên nền canvas. Đã duyệt.
 9. Theme có setting kiểu Zed: Appearance System/Light/Dark + theme cho sáng + theme cho tối + accent. Default Light/Dark + 4 flavor Catppuccin (palette v1.8.0), 14 accent.
@@ -38,7 +38,7 @@ main.go                cửa sổ 1280×820, TitleBarHidden, StateKey "main"
 internal/
   model/      Profile, Bookmark, PinnedTable (dùng chung store/driver/view)
   store/      app SQLite (plugin), import recall
-  secret/     mygo.Secrets, service recall.connection.<id>
+  secret/     mygo.Secrets, service seeker.connection.<id>, move từ recall.connection.<id> khi chưa có
   sqltext/    Split/At (đã gộp 2 splitter của recall)
   theme/      Settings → ui.Theme + Islands + editor.Theme; Catppuccin
   icons/      lucide 0.470.0 (svg/*.svg, go:embed)
@@ -378,7 +378,7 @@ Phạm vi: `go tool mygo build`, icon (`resources/icon.png`), `rg` trong resourc
 Gotchas:
 - App đóng gói không bao giờ tải thư viện native lúc chạy: CLI phải đóng sẵn. Kiểm bằng cách chạy bản build trên máy, không qua `mygo dev`.
 - Đổi identifier sau khi đã dùng thật = mất `PathUserData` cũ.
-- Keychain: lần đầu bản build mới (chữ ký khác) đọc item cũ, macOS hỏi lại quyền.
+- Keychain: dùng `/usr/bin/security` như recall, không dùng Keychain API của mygo. Item tạo bằng API tin cdhash của bản build (cert local không có Team ID nên đổi sau mỗi build, macOS hỏi lại); item tạo bằng `security` tin chính `security`, không đổi. Item `seeker.*` tạo trước đó bằng API sẽ hỏi một lần: bấm Always Allow.
 
 Xong khi: dùng Seeker thay recall hằng ngày.
 

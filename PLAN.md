@@ -314,13 +314,13 @@ Kết quả (đã làm; **chưa test tay trong app** (`go tool mygo dev`), anh t
 - Test: unit `app/gridstate_test.go`, `app/tabletab_test.go`, `grid/export_test.go`, `sqltext/clauseinput_test.go`; live PG + MySQL `app/tabletab_live_test.go` (phân trang, lọc, sort, count, lỗi lọc, commit, commit bị từ chối); live PG qua cửa sổ `view/grid_live_test.go` (chọn/sum/copy/menu/ẩn cột, ảo hoá 150 cột + cột số dòng đứng yên, hộp giá trị, kéo header, table tab đầy đủ). `-race` xanh.
 
 Còn thiếu so với spec / ghi chú:
-- Header chưa có mũi tên chiều sort (chỉ ô ORDER BY nói chiều).
+- Header có mũi tên ▲/▼ theo ORDER BY (kèm số thứ tự khi sort nhiều cột); chỉ đọc từ ORDER BY, cột là biểu thức/hàm thì không có mũi tên (`sqltext.OrderTerms`).
 - Gợi ý WHERE/ORDER BY dùng `ui.Autocomplete`: chỉ gợi ý cho từ ở **cuối** ô, chỉ khớp chứa/tiền tố (recall khớp fuzzy, gợi ý theo vị trí con trỏ).
 - Hộp giá trị đầy đủ chỉ hiện khi ô bị cắt hoặc có xuống dòng (recall hiện cho mọi ô focus).
-- Độ rộng cột tính bằng `grid.GridCharWidth` cố định (8px), chưa đo font thật (`grid.CharWidth(measure)` có sẵn). Font ô Menlo 12.
+- Độ rộng cột tính theo bề rộng ký tự đo bằng `c.MeasureText` với font bảng trong settings (`UI.CharW`, đo lại khi đổi family/size); chưa có font thì rơi về 8px × size/12.
 - Layout cột, cột ẩn, WHERE/ORDER BY, trang chỉ sống trong phiên (recall cũng không lưu); chưa vào bảng `settings`.
 - Export dùng hộp thoại Save của hệ thống (recall chọn folder rồi ghi `<tab>.csv`). JSON giữ khoá trùng nếu hai cột trùng tên.
-- Bảng không có PK, hoặc PK không nằm trong result: ô chỉ đọc, không báo lý do. Reload (`⌘R`, đổi lọc) bỏ edit chờ commit mà không hỏi.
+- Bảng không có PK, hoặc PK không nằm trong result: Enter/double-click/`Edit cell` toast lý do (`ReadOnlyReason`). Reload/đổi lọc/sort/đổi trang khi còn edit chờ commit bị chặn, toast có nút `Discard` để bỏ edit rồi làm tiếp.
 - Giá trị sửa gửi dạng text; không kiểm kiểu ở client, server từ chối thì toast và giữ edit.
 - Sau commit, thứ tự dòng khi không có ORDER BY là thứ tự server trả (PG đẩy dòng vừa UPDATE xuống cuối); muốn ổn định phải đặt ORDER BY.
 - `Copy as INSERT` ghi cột theo thứ tự result, không theo thứ tự anh kéo; không có ở kết quả của query.

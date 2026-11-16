@@ -114,3 +114,34 @@ func TestSortTableWritesOrderBy(t *testing.T) {
 		t.Errorf("Clear sort left %q", tv.OrderBy)
 	}
 }
+
+// Reading the page again drops the staged edits, so it waits for the user's
+// word: the toast's button discards them and goes on.
+func TestUnsavedEditsBlockReload(t *testing.T) {
+	a := newTestApp(t)
+	tv := tableTab(a, "t")
+	tv.Grid = NewResultGrid(sampleResult(), sampleTarget())
+	tv.Grid.StageEdit(0, 1, "new@x.io", false)
+	tv.WhereText = "id > 1"
+
+	a.ReloadTable("t")
+	a.ApplyTableFilter("t")
+	a.SetTablePage("t", 2)
+	a.SetTablePageSize("t", 500)
+	a.SortTable("t", 1, true)
+	if tv.Loading || tv.Where != "" || tv.Page != 1 || tv.PageSize == 500 || tv.OrderBy != "" {
+		t.Fatalf("a reload went through: loading %v, where %q, page %d, size %d, order %q", tv.Loading, tv.Where, tv.Page, tv.PageSize, tv.OrderBy)
+	}
+	if tv.Grid.Pending() != 1 {
+		t.Fatalf("edits dropped without asking: %d left", tv.Grid.Pending())
+	}
+	toasts := a.TakeToasts()
+	if len(toasts) != 5 || toasts[0].Action != "Discard" || toasts[0].Run == nil {
+		t.Fatalf("toasts: %+v", toasts)
+	}
+
+	toasts[1].Run() // the filter's
+	if tv.Grid.Pending() != 0 || tv.Where != "id > 1" {
+		t.Errorf("Discard: %d edits left, where %q", tv.Grid.Pending(), tv.Where)
+	}
+}

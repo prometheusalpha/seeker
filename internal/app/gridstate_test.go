@@ -254,3 +254,44 @@ func TestRefitScalesWidthsButKeepsDraggedOnes(t *testing.T) {
 		t.Errorf("dragged width = %v, want 123", g.Width(0))
 	}
 }
+
+func TestGridSortMarks(t *testing.T) {
+	g := NewResultGrid(sampleResult(), sampleTarget())
+	plain := g.Width(0)
+	g.SetSort(`"email" DESC`)
+	cols := g.TableColumns()
+	if cols[2].Title != "email ▼" || cols[1].Title != "id" {
+		t.Errorf("titles: %q, %q", cols[1].Title, cols[2].Title)
+	}
+	if g.Width(0) != plain {
+		t.Errorf("an unsorted column changed width: %v -> %v", plain, g.Width(0))
+	}
+	g.SetSort(`"score", "id" DESC`)
+	cols = g.TableColumns()
+	if cols[3].Title != "score ▲1" || cols[1].Title != "id ▼2" || cols[2].Title != "email" {
+		t.Errorf("titles: %q, %q, %q", cols[1].Title, cols[2].Title, cols[3].Title)
+	}
+	g.SetSort("")
+	if g.TableColumns()[1].Title != "id" {
+		t.Error("an empty ORDER BY left an arrow")
+	}
+}
+
+func TestReadOnlyReason(t *testing.T) {
+	if why := NewResultGrid(sampleResult(), nil).ReadOnlyReason(); why != "" {
+		t.Errorf("a query's result explained itself: %q", why)
+	}
+	if why := NewResultGrid(sampleResult(), sampleTarget()).ReadOnlyReason(); why != "" {
+		t.Errorf("an editable grid said %q", why)
+	}
+	noKey := sampleTarget()
+	noKey.Keys = nil
+	if why := NewResultGrid(sampleResult(), noKey).ReadOnlyReason(); !strings.Contains(why, "no primary key") {
+		t.Errorf("no key: %q", why)
+	}
+	missing := sampleTarget()
+	missing.Keys = []string{"uuid"}
+	if why := NewResultGrid(sampleResult(), missing).ReadOnlyReason(); !strings.Contains(why, "not in the result") {
+		t.Errorf("key not in result: %q", why)
+	}
+}

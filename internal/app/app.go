@@ -48,6 +48,9 @@ type UI struct {
 	SidebarW    float32
 	EditorPct   float32
 	HideSidebar bool
+	// CharW is the advance of the table font as the view measured it, 0
+	// before it has.
+	CharW float64
 }
 
 type layout struct {
@@ -56,10 +59,16 @@ type layout struct {
 	HideSidebar bool    `json:"hideSidebar"`
 }
 
-// CharWidth is the monospace advance of the grid's font in px. The grid's
-// widths were tuned to 8px at 12pt, and a monospace advance scales with the
-// size, so a family other than the 0.6em ones needs measuring instead.
-func (u UI) CharWidth() float64 { return grid.GridCharWidth * u.Font.Size / 12 }
+// CharWidth is the monospace advance of the grid's font in px: what the view
+// measured, or until it has, the 8px the widths were tuned to at 12pt
+// scaled by the size (a monospace advance scales with it, for the 0.6em
+// families).
+func (u UI) CharWidth() float64 {
+	if u.CharW > 0 {
+		return u.CharW
+	}
+	return grid.GridCharWidth * u.Font.Size / 12
+}
 
 func defaultUI() UI {
 	return UI{Theme: theme.DefaultSettings(), Font: theme.DefaultFont(), SidebarW: 260, EditorPct: 48}

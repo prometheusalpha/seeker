@@ -171,6 +171,7 @@ func (a *App) LoadTable(id string) {
 	gen := tv.gen
 	tv.Loading, tv.Err, tv.ErrTarget = true, "", ""
 	known, keys := tv.keysKnown, slices.Clone(tv.keys)
+	orderBy := tv.OrderBy
 	go func() {
 		defer cancel()
 		var res driver.Result
@@ -218,6 +219,7 @@ func (a *App) LoadTable(id string) {
 				// UPDATE qualify the table by.
 				target := &TableTarget{Type: prof.DBType, Dialect: d, Database: t.Database, Schema: schema, Table: t.Table, Keys: keys}
 				g := newResultGrid(res, target, a.ui.CharWidth())
+				g.SetSort(orderBy)
 				g.Inherit(tv.Grid)
 				tv.Grid, tv.Duration = g, res.Duration
 			}
@@ -225,9 +227,31 @@ func (a *App) LoadTable(id string) {
 	}()
 }
 
-// ReloadTable runs the page again (Cmd+R), dropping the edits staged on it.
+// unsaved reports edits staged on the table that reading the page again
+// would drop, and says so in a toast whose button drops them and goes on
+// with again. The edits are the user's typing: they leave only by their
+// word.
+func (a *App) unsaved(id string, again func()) bool {
+	tv := a.TableOf(id)
+	if tv == nil || tv.Grid == nil || tv.Grid.Pending() == 0 {
+		return false
+	}
+	n := tv.Grid.Pending()
+	msg := fmt.Sprintf("%d edited cells are not saved: Save (Cmd+S) or discard them first", n)
+	if n == 1 {
+		msg = "1 edited cell is not saved: Save (Cmd+S) or discard it first"
+	}
+	a.toastAction(msg, "Discard", func() {
+		a.DiscardEdits(id)
+		again()
+	})
+	return true
+}
+
+// ReloadTable runs the page again (Cmd+R). Edits staged on it are not
+// dropped without asking.
 func (a *App) ReloadTable(id string) {
-	if tv := a.TableOf(id); tv != nil {
+	if tv := a.TableOf(id); tv != nil && !a.unsaved(id, func() { a.ReloadTable(id) }) {
 		a.LoadTable(id)
 	}
 }
@@ -237,7 +261,7 @@ func (a *App) ReloadTable(id string) {
 // the page it was on means nothing.
 func (a *App) ApplyTableFilter(id string) {
 	tv := a.TableOf(id)
-	if tv == nil {
+	if tv == nil || a.unsaved(id, func() { a.ApplyTableFilter(id) }) {
 		return
 	}
 	tv.Where, tv.OrderBy = strings.TrimSpace(tv.WhereText), strings.TrimSpace(tv.OrderText)
@@ -257,6 +281,9 @@ func (a *App) SortTable(id string, resultCol int, desc bool) {
 	if tv == nil || tv.Grid == nil || resultCol < 0 || resultCol >= len(tv.Grid.Columns) {
 		return
 	}
+	if a.unsaved(id, func() { a.SortTable(id, resultCol, desc) }) {
+		return
+	}
 	prof, ok := a.Profile(t.Conn)
 	if !ok {
 		return
@@ -271,7 +298,7 @@ func (a *App) SortTable(id string, resultCol int, desc bool) {
 
 // ClearSort empties the ORDER BY.
 func (a *App) ClearSort(id string) {
-	if tv := a.TableOf(id); tv != nil {
+	if tv := a.TableOf(id); tv != nil && !a.unsaved(id, func() { a.ClearSort(id) }) {
 		tv.OrderText = ""
 		a.ApplyTableFilter(id)
 	}
@@ -280,7 +307,7 @@ func (a *App) ClearSort(id string) {
 // SetTablePage goes to a page, from 1.
 func (a *App) SetTablePage(id string, page int) {
 	tv := a.TableOf(id)
-	if tv == nil || max(page, 1) == tv.Page {
+	if tv == nil || max(page, 1) == tv.Page || a.unsaved(id, func() { a.SetTablePage(id, page) }) {
 		return
 	}
 	tv.Page = max(page, 1)
@@ -291,7 +318,7 @@ func (a *App) SetTablePage(id string, page int) {
 // another size the page it was on is usually past the end.
 func (a *App) SetTablePageSize(id string, size int) {
 	tv := a.TableOf(id)
-	if tv == nil || !slices.Contains(PageSizes, size) || size == tv.PageSize {
+	if tv == nil || !slices.Contains(PageSizes, size) || size == tv.PageSize || a.unsaved(id, func() { a.SetTablePageSize(id, size) }) {
 		return
 	}
 	tv.PageSize, tv.Page = size, 1

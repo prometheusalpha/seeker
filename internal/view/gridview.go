@@ -74,7 +74,7 @@ func (s *App) resultGrid(c *ui.Context, g *app.ResultGrid, gc gridCtx) {
 		}).Grow(1).FillWidth()
 		if table.Submitted() {
 			if rc, ok := g.CursorCol(); ok {
-				g.BeginEdit(g.Row, rc)
+				s.beginEdit(g, g.Row, rc)
 			}
 		}
 	})
@@ -160,6 +160,28 @@ func (s *App) tableFont(e ui.Element, delta float32) ui.Element {
 	return e
 }
 
+// measureTableFont gives the app the advance of the table font, measured by
+// the same engine that paints the cells, so the column widths fit whatever
+// family and size the settings name. It measures again only when they
+// change.
+func (s *App) measureTableFont(c *ui.Context) {
+	f := s.core.UI().Font
+	family := strings.TrimSpace(f.Table)
+	if family == "" {
+		family = fallbackFamily
+	}
+	key := fmt.Sprintf("%s|%v", family, f.Size)
+	if key == s.tableFontKey {
+		return
+	}
+	s.tableFontKey = key
+	w := grid.CharWidth(func(text string) float64 {
+		width, _ := c.MeasureText(0, ui.Span{Text: text, Font: family, Size: float32(f.Size)})
+		return float64(width)
+	})
+	s.core.UI().CharW = w
+}
+
 // valueBox shows the cell the cursor is on in full when its column cuts
 // it, or it holds line breaks.
 func (s *App) valueBox(c *ui.Context, g *app.ResultGrid) {
@@ -180,6 +202,16 @@ func (s *App) valueBox(c *ui.Context, g *app.ResultGrid) {
 	ui.Scroll(c.Key("value-box")).Height(valueBoxHeight).FillWidth().Children(func() {
 		s.tableFont(ui.Text(c, text), -1).TextColor(kindColor(t, g.Columns[rc].Type)).Selectable().Wrap()
 	})
+}
+
+// beginEdit opens a cell's editor; on a table that cannot be edited it says
+// why, as Enter and a double click would otherwise do nothing.
+func (s *App) beginEdit(g *app.ResultGrid, row, rc int) {
+	if !g.BeginEdit(row, rc) {
+		if why := g.ReadOnlyReason(); why != "" {
+			s.core.Toast(why)
+		}
+	}
 }
 
 // gridKeys takes the grid's own keys while it has the focus: copy, sort.
@@ -282,12 +314,12 @@ func (s *App) cellMenu(c *ui.Context, m *ui.Menu, g *app.ResultGrid, gc gridCtx,
 		}
 	}
 	if rc >= 0 {
-		if g.CanEdit() {
+		if g.Target != nil {
 			m.Separator()
 			if m.Item("Edit cell").ID("edit").Chosen() {
-				g.BeginEdit(row, rc)
+				s.beginEdit(g, row, rc)
 			}
-			if m.Item("Set NULL").ID("null").Chosen() {
+			if m.Item("Set NULL").ID("null").Disabled(!g.CanEdit()).Chosen() {
 				g.StageEdit(row, rc, "", true)
 			}
 		}

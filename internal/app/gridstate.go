@@ -46,6 +46,9 @@ type ResultGrid struct {
 	Target  *TableTarget
 
 	hidden map[int]bool
+	// sorted marks the result columns the table's ORDER BY sorts by: the
+	// position in it (from 1) and whether it descends.
+	sorted map[int]sortMark
 	widths []float32
 	// charW is the advance the widths were sized for.
 	charW  float64
@@ -60,6 +63,11 @@ type ResultGrid struct {
 	// to give it the keyboard once, as it opens.
 	EditText  string
 	EditFocus bool
+}
+
+type sortMark struct {
+	pos  int
+	desc bool
 }
 
 // rowHeaderID names the column of row numbers.
@@ -102,14 +110,52 @@ func (g *ResultGrid) Refit(charW float64) {
 		return
 	}
 	g.charW = charW
-	for i, c := range g.Columns {
+	for i := range g.Columns {
 		g.widths[i] = float32(grid.AutoColumnWidth(grid.ColumnWidthInput{
-			Header:    c.Name,
-			Values:    grid.SampleColumnValues(g.Rows, i, c.Type, grid.GridSampleRows),
+			Header:    g.header(i),
+			Values:    grid.SampleColumnValues(g.Rows, i, g.Columns[i].Type, grid.GridSampleRows),
 			CharWidth: charW,
 		}))
 	}
 	g.valid = false
+}
+
+// header is a column's title: its name, and an arrow by the order the
+// table is sorted in, with the position when it sorts by several columns.
+func (g *ResultGrid) header(result int) string {
+	m, ok := g.sorted[result]
+	if !ok {
+		return g.Columns[result].Name
+	}
+	arrow := " ▲"
+	if m.desc {
+		arrow = " ▼"
+	}
+	if len(g.sorted) > 1 {
+		arrow += strconv.Itoa(m.pos)
+	}
+	return g.Columns[result].Name + arrow
+}
+
+// SetSort marks the columns the ORDER BY of the statement sorts by. The
+// header only shows what the clause says; it never sorts.
+func (g *ResultGrid) SetSort(orderBy string) {
+	g.sorted = nil
+	for i, term := range sqltext.OrderTerms(orderBy) {
+		for j, c := range g.Columns {
+			if _, done := g.sorted[j]; !done && strings.EqualFold(c.Name, term.Column) {
+				if g.sorted == nil {
+					g.sorted = map[int]sortMark{}
+				}
+				g.sorted[j] = sortMark{pos: i + 1, desc: term.Desc}
+				break
+			}
+		}
+	}
+	// The arrows widen the titles, so the widths are sized again.
+	w := g.charW
+	g.charW = 0
+	g.Refit(w)
 }
 
 // Signature identifies the columns, so a layout is only carried over to a
@@ -159,11 +205,11 @@ func (g *ResultGrid) TableColumns() []ui.TableColumn {
 	}
 	g.cols = []ui.TableColumn{{ID: rowHeaderID, Width: g.numW, MinWidth: g.numW, RowHeader: true, Fixed: true, Frozen: true}}
 	g.colMap = []int{-1}
-	for i, c := range g.Columns {
+	for i := range g.Columns {
 		if g.hidden[i] {
 			continue
 		}
-		g.cols = append(g.cols, ui.TableColumn{ID: colID(i), Title: c.Name, Width: g.widths[i], MinWidth: 40})
+		g.cols = append(g.cols, ui.TableColumn{ID: colID(i), Title: g.header(i), Width: g.widths[i], MinWidth: 40})
 		g.colMap = append(g.colMap, i)
 	}
 	g.valid = true
@@ -342,6 +388,19 @@ func (g *ResultGrid) keyColumns() []int {
 // primary key, every part of it in the result.
 func (g *ResultGrid) CanEdit() bool {
 	return g.Target != nil && len(g.Target.Keys) > 0 && g.keyColumns() != nil
+}
+
+// ReadOnlyReason says why a table's cells cannot be edited, empty for an
+// editable grid and for a query's result, which has no table to explain.
+func (g *ResultGrid) ReadOnlyReason() string {
+	switch {
+	case g.Target == nil || g.CanEdit():
+		return ""
+	case len(g.Target.Keys) == 0:
+		return "Read-only: this table has no primary key, so a row cannot be addressed"
+	default:
+		return "Read-only: the primary key column is not in the result"
+	}
 }
 
 // StageEdit holds a new value for a cell until the edits are committed;

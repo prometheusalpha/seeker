@@ -37,6 +37,9 @@ type App struct {
 	// closes; focusWhere moves it to the WHERE field (⌘L).
 	refocusGrid bool
 	focusWhere  bool
+	// tableFontKey is the table font the grid's character advance was last
+	// measured for.
+	tableFontKey string
 }
 
 func New(core *app.App) *App {
@@ -56,6 +59,7 @@ func (s *App) View(c *ui.Context) {
 	res := theme.Resolve(u.Theme, c.Theme())
 	c.SetTheme(&res.UI)
 	s.core.SetEditorTheme(res.Code)
+	s.measureTableFont(c)
 	s.core.SyncFont()
 	pal := res.Islands
 	ui.Column(c).Fill().Background(pal.Canvas).Children(func() {

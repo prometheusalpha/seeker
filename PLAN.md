@@ -346,6 +346,13 @@ Gotchas:
 - Đổi tên file đang mở: tab, bookmark (path), binding datasource phải đi theo.
 - Quick open fan-out nhiều connection: huỷ lượt cũ khi gõ tiếp, bỏ kết quả về muộn.
 
+Tiến độ M5 (Files panel, phần 1: cây folder; **chưa test tay**, chưa làm Quick open / Find in files / thao tác file):
+- `internal/files`: `Scan` (đệ quy, depth 10, bỏ `IGNORE_DIRS`, thư mục trước), `Inside` (realpath, chặn symlink ra ngoài/vòng), `Match` (glob `*` `?` `{a,b}`, không phân biệt hoa thường). Test có symlink thoát folder, link vòng, link hỏng.
+- `app/sqlfiles.go`: folder lưu ở settings `sqlFiles` (`{folders, filter}`, theo real path nên cùng folder qua link chỉ mở một lần); quét ở goroutine, mỗi folder có `gen` để bỏ kết quả cũ; filter debounce 250ms. Outline khoá theo path (`ui.OutlineState[string]`); file trả `nil` con (không mũi tên), folder rỗng trả slice rỗng.
+- `view/filespanel.go`: panel **bên phải** workspace. `ui.Split` chỉ cho độ rộng của pane đầu nên split chạy `Direction(RightToLeft)`, mỗi pane bọc lại `LeftToRight`; kiểm bằng ảnh Tester. Rộng `UI.FilesW` (mặc định 240, lưu ở `layout`), nút toggle ở title bar (`UI.HideFiles`). Một click vào tên: file → `OpenFile`, folder → mở/đóng (Enter cũng vậy; mũi tên lên/xuống chỉ chọn) (không badge connection, không chấm "đang mở": tab đã cho thấy); menu chuột phải folder gốc: Scan again / Close folder.
+- Chưa có: tạo/đổi tên/xoá (Trash)/cut/copy/paste, Reveal in Finder, file đang mở đổi tên thì tab/bookmark/binding đi theo.
+- `TestExportGridWritesFile` (M4) từng có data race: goroutine của `ExportGrid` đọc biến `pickExport` trong lúc test reset nó. Sửa: đọc picker ở goroutine gọi trước khi `go` (cũng áp cho `pickSave`, `pickFolder`).
+
 ### M6: Explain viewer, phím tắt, snippets, giao diện
 
 Phạm vi:

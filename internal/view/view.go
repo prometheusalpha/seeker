@@ -89,13 +89,27 @@ func ink(t *ui.Theme, chosen bool) (icon, muted ui.Color) {
 }
 
 func (s *App) body(c *ui.Context, pal palette) {
-	center := func() { s.workspace(c, pal) }
-	if s.core.UI().HideSidebar {
-		center()
+	main := func() { s.workspace(c, pal) }
+	if !s.core.UI().HideSidebar {
+		main = func() {
+			gapSplit(c, pal, false, func(first, second func(func())) {
+				ui.Split(c, &s.core.UI().SidebarW, func() { first(func() { s.sidebar(c, pal) }) }, func() { second(func() { s.workspace(c, pal) }) }).SplitReset(260).Fill()
+			})
+		}
+	}
+	if s.core.UI().HideFiles {
+		main()
 		return
 	}
+	// The files panel's width is the first pane's, as Split sizes it, and
+	// the panel sits on the right: the split runs right to left, and each
+	// pane lays its own content out left to right again.
 	gapSplit(c, pal, false, func(first, second func(func())) {
-		ui.Split(c, &s.core.UI().SidebarW, func() { first(func() { s.sidebar(c, pal) }) }, func() { second(center) }).SplitReset(260).Fill()
+		ltr := func(content func()) func() {
+			return func() { ui.Box(c).Fill().Direction(ui.LeftToRight).Children(content) }
+		}
+		ui.Split(c, &s.core.UI().FilesW, func() { first(ltr(func() { s.filesPanel(c, pal) })) }, func() { second(ltr(main)) }).
+			Direction(ui.RightToLeft).SplitReset(240).Fill()
 	})
 }
 
@@ -187,6 +201,9 @@ func (s *App) titleBar(c *ui.Context) {
 		ui.Spacer(c)
 		if iconButton(c, icons.Plus, "New connection").Clicked() {
 			s.core.OpenConnectionDialog("")
+		}
+		if iconButton(c, icons.FolderTree, "Toggle files").Clicked() {
+			u.HideFiles = !u.HideFiles
 		}
 		if iconButton(c, icons.Moon, "Toggle light and dark").Clicked() {
 			if u.Theme.IsDark(s.systemDark) {

@@ -48,6 +48,10 @@ type UI struct {
 	SidebarW    float32
 	EditorPct   float32
 	HideSidebar bool
+	// FilesW is the width of the Files panel on the right, HideFiles
+	// whether it is closed.
+	FilesW    float32
+	HideFiles bool
 	// CharW is the advance of the table font as the view measured it, 0
 	// before it has.
 	CharW float64
@@ -57,6 +61,8 @@ type layout struct {
 	SidebarW    float32 `json:"sidebarW"`
 	EditorPct   float32 `json:"editorPct"`
 	HideSidebar bool    `json:"hideSidebar"`
+	FilesW      float32 `json:"filesW"`
+	HideFiles   bool    `json:"hideFiles"`
 }
 
 // CharWidth is the monospace advance of the grid's font in px: what the view
@@ -71,7 +77,7 @@ func (u UI) CharWidth() float64 {
 }
 
 func defaultUI() UI {
-	return UI{Theme: theme.DefaultSettings(), Font: theme.DefaultFont(), SidebarW: 260, EditorPct: 48}
+	return UI{Theme: theme.DefaultSettings(), Font: theme.DefaultFont(), SidebarW: 260, EditorPct: 48, FilesW: 240}
 }
 
 // Toast is a message the view shows once. Action, with Run, adds a button.
@@ -92,10 +98,11 @@ type App struct {
 	pins     []model.PinnedTable
 	pinAt    map[model.PinnedTable]int
 
-	tree Tree
-	tabs Tabs
-	dlg  Dialogs
-	ui   UI
+	tree  Tree
+	files Files
+	tabs  Tabs
+	dlg   Dialogs
+	ui    UI
 
 	savedUI     UI
 	savedTabs   []Tab
@@ -155,6 +162,7 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 	}
 	a.tabs.Active = -1
 	a.tree.init()
+	a.files.init()
 	a.pl.OnLost = a.connectionLost
 
 	if n, err := db.ImportRecall(ctx, recallPath); err != nil {
@@ -182,6 +190,10 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 		a.toast("Could not read the window layout: " + err.Error())
 	} else if err == nil {
 		a.ui.SidebarW, a.ui.EditorPct, a.ui.HideSidebar = l.SidebarW, l.EditorPct, l.HideSidebar
+		a.ui.HideFiles = l.HideFiles
+		if l.FilesW > 0 {
+			a.ui.FilesW = l.FilesW
+		}
 	}
 	var saved savedTabs
 	if err := db.Setting(ctx, settingTabs, &saved); err != nil && !errors.Is(err, store.ErrNoSetting) {
@@ -193,6 +205,15 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 		a.toast("Could not read the file bindings: " + err.Error())
 	}
 	a.bindings = a.bindings[:min(len(a.bindings), maxBindings)]
+	var fs filesSettings
+	if err := db.Setting(ctx, settingFiles, &fs); err != nil && !errors.Is(err, store.ErrNoSetting) {
+		a.toast("Could not read the folders: " + err.Error())
+	} else if err == nil {
+		a.files.Folders, a.files.Filter, a.files.saved = fs.Folders, fs.Filter, fs
+		for _, f := range fs.Folders {
+			a.files.Out.Open.Add(f)
+		}
+	}
 	a.loadBookmarks()
 	a.savedUI = a.ui
 	a.snapshotTabs()
@@ -204,6 +225,7 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 // the workspace needs it.
 func (a *App) Attach(upd Update) {
 	a.upd = upd
+	a.RescanAll()
 	if t, ok := a.ActiveTab(); ok {
 		a.ensureTabConnected(t)
 	}
@@ -211,6 +233,9 @@ func (a *App) Attach(upd Update) {
 
 // Close ends every session and closes the app's database, on quit.
 func (a *App) Close() {
+	if a.files.filterTimer != nil {
+		a.files.filterTimer.Stop()
+	}
 	if a.tree.filterTimer != nil {
 		a.tree.filterTimer.Stop()
 	}
@@ -256,7 +281,7 @@ func (a *App) Sync() {
 				a.upd(func() { a.toast("Could not save the fonts: " + err.Error()) })
 			}
 		})
-		l := layout{a.ui.SidebarW, a.ui.EditorPct, a.ui.HideSidebar}
+		l := layout{a.ui.SidebarW, a.ui.EditorPct, a.ui.HideSidebar, a.ui.FilesW, a.ui.HideFiles}
 		a.saves.later(settingLayout, func() {
 			if err := a.db.SetSetting(a.ctx, settingLayout, l); err != nil {
 				a.upd(func() { a.toast("Could not save the window layout: " + err.Error()) })

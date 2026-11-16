@@ -28,8 +28,11 @@ func (a *App) ExportGrid(g *ResultGrid, title, format string) {
 		return
 	}
 	name := strings.TrimSuffix(title, ".sql") + "." + format
+	// The picker is read here, on the caller's goroutine: a test swaps it,
+	// and the goroutine below must not race that.
+	pick := pickExport
 	go func() {
-		path, err := pickExport(name, format)
+		path, err := pick(name, format)
 		n := len(g.Rows)
 		if err == nil && path != "" {
 			if !strings.HasSuffix(strings.ToLower(path), "."+format) {

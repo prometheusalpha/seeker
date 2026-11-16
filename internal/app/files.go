@@ -213,8 +213,9 @@ func (a *App) SaveAs(id string) {
 		name += ".sql"
 	}
 	content := t.SQL
+	pick := pickSave
 	go func() {
-		path, err := pickSave(name)
+		path, err := pick(name)
 		if err == nil && path != "" {
 			if !strings.HasSuffix(strings.ToLower(path), ".sql") {
 				path += ".sql"

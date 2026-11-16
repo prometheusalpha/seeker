@@ -402,7 +402,7 @@ func (a *App) GridOf(id string, i int) *ResultGrid {
 	if te.grids == nil {
 		te.grids = map[int]*ResultGrid{}
 	}
-	g := NewResultGrid(res, nil)
+	g := newResultGrid(res, nil, a.ui.CharWidth())
 	te.grids[i] = g
 	return g
 }

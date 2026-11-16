@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"seeker/internal/driver"
+	"seeker/internal/grid"
 	"seeker/internal/model"
 	"seeker/internal/sqltext"
 )
@@ -238,5 +239,18 @@ func TestExportGridWritesFile(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if _, err := os.Stat(filepath.Join(dir, "out.json")); err == nil {
 		t.Error("a cancelled export wrote a file")
+	}
+}
+
+func TestRefitScalesWidthsButKeepsDraggedOnes(t *testing.T) {
+	g := NewResultGrid(sampleResult(), nil)
+	before := g.Width(1)
+	g.List.Columns.Widths = map[string]float32{colID(0): 123}
+	g.Refit(grid.GridCharWidth * 2)
+	if g.Width(1) <= before {
+		t.Errorf("width after a larger font = %v, want more than %v", g.Width(1), before)
+	}
+	if g.Width(0) != 123 {
+		t.Errorf("dragged width = %v, want 123", g.Width(0))
 	}
 }

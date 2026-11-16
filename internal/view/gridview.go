@@ -10,13 +10,14 @@ import (
 
 	"seeker/internal/app"
 	"seeker/internal/grid"
+	"seeker/internal/theme"
 )
 
-// gridFont is the face of the cells. Widths are computed for a monospace
-// advance (grid.GridCharWidth), so the cells must be set in one.
+// The face of the cells is the table font of the settings. Widths are
+// computed for a monospace advance (UI.CharWidth), so it must be one.
 const (
-	gridFont     = "Menlo"
-	gridFontSize = 12
+	// fallbackFamily is what a blank table family leaves the cells in.
+	fallbackFamily = "Menlo"
 	// valueBoxHeight is the box that shows a cell in full.
 	valueBoxHeight = 96
 )
@@ -96,11 +97,11 @@ func (s *App) gridCell(c *ui.Context, g *app.ResultGrid, row, col int) {
 		if chosen {
 			color = t.AccentText
 		}
-		ui.Text(c, strconv.Itoa(row+1)).Font(gridFont).FontSize(11).TextColor(color).SingleLine()
+		s.tableFont(ui.Text(c, strconv.Itoa(row+1)), -1).TextColor(color).SingleLine()
 		return
 	}
 	if e := g.Editing; e != nil && e.Row == row && e.Col == rc {
-		in := ui.TextInput(c.Key("cell-edit"), &g.EditText).Font(gridFont).FontSize(gridFontSize).FillWidth()
+		in := s.tableFont(ui.TextInput(c.Key("cell-edit"), &g.EditText), 0).FillWidth()
 		if g.EditFocus {
 			g.EditFocus = false
 			in.Focus()
@@ -122,15 +123,15 @@ func (s *App) gridCell(c *ui.Context, g *app.ResultGrid, row, col int) {
 		if chosen {
 			color = t.AccentText.Alpha(0.6)
 		}
-		el = ui.Text(c, "NULL").Font(gridFont).FontSize(gridFontSize).TextColor(color).SingleLine()
+		el = s.tableFont(ui.Text(c, "NULL"), 0).TextColor(color).SingleLine()
 	} else {
 		text := g.Text(row, rc)
 		color := kindColor(t, g.Columns[rc].Type)
 		if chosen {
 			color = t.AccentText
 		}
-		el = ui.Text(c, text).Font(gridFont).FontSize(gridFontSize).TextColor(color).SingleLine()
-		if cut(text, g.Width(rc)) {
+		el = s.tableFont(ui.Text(c, text), 0).TextColor(color).SingleLine()
+		if s.cut(text, g.Width(rc)) {
 			el.Tooltip(oneLine(text, 2000))
 		}
 	}
@@ -140,8 +141,23 @@ func (s *App) gridCell(c *ui.Context, g *app.ResultGrid, row, col int) {
 }
 
 // cut reports a text that does not fit its column, so it shows ellipsised.
-func cut(text string, width float32) bool {
-	return float32(grid.EstimateTextWidth(text, grid.GridCharWidth*0.9))+16 > width
+func (s *App) cut(text string, width float32) bool {
+	return float32(grid.EstimateTextWidth(text, s.core.UI().CharWidth()*0.9))+16 > width
+}
+
+// tableFont sets e in the table font of the settings, at their size plus
+// delta, so row numbers and the value box sit a point under the cells.
+func (s *App) tableFont(e ui.Element, delta float32) ui.Element {
+	f := s.core.UI().Font
+	family := strings.TrimSpace(f.Table)
+	if family == "" {
+		family = fallbackFamily
+	}
+	e = e.Font(family).FontSize(float32(f.Size) + delta)
+	if feats := theme.ParseFeatures(f.Features); feats != "" {
+		e = e.FontFeatures(feats)
+	}
+	return e
 }
 
 // valueBox shows the cell the cursor is on in full when its column cuts
@@ -156,13 +172,13 @@ func (s *App) valueBox(c *ui.Context, g *app.ResultGrid) {
 		return
 	}
 	text := g.Text(g.Row, rc)
-	if !strings.ContainsAny(text, "\n\r") && !cut(text, g.Width(rc)) {
+	if !strings.ContainsAny(text, "\n\r") && !s.cut(text, g.Width(rc)) {
 		return
 	}
 	t := c.Theme()
 	ui.Divider(c)
 	ui.Scroll(c.Key("value-box")).Height(valueBoxHeight).FillWidth().Children(func() {
-		ui.Text(c, text).Font(gridFont).FontSize(11).TextColor(kindColor(t, g.Columns[rc].Type)).Selectable().Wrap()
+		s.tableFont(ui.Text(c, text), -1).TextColor(kindColor(t, g.Columns[rc].Type)).Selectable().Wrap()
 	})
 }
 

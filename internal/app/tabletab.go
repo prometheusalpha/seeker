@@ -217,7 +217,7 @@ func (a *App) LoadTable(id string) {
 				// For MySQL the schema is the database, and what INSERT and
 				// UPDATE qualify the table by.
 				target := &TableTarget{Type: prof.DBType, Dialect: d, Database: t.Database, Schema: schema, Table: t.Table, Keys: keys}
-				g := NewResultGrid(res, target)
+				g := newResultGrid(res, target, a.ui.CharWidth())
 				g.Inherit(tv.Grid)
 				tv.Grid, tv.Duration = g, res.Duration
 			}

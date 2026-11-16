@@ -56,6 +56,7 @@ func (s *App) View(c *ui.Context) {
 	res := theme.Resolve(u.Theme, c.Theme())
 	c.SetTheme(&res.UI)
 	s.core.SetEditorTheme(res.Code)
+	s.core.SyncFont()
 	pal := res.Islands
 	ui.Column(c).Fill().Background(pal.Canvas).Children(func() {
 		s.titleBar(c)

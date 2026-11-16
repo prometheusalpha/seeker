@@ -85,6 +85,7 @@ func (a *App) tabEditor(id string) *tabEditor {
 	te.st = &editor.State{
 		Buffer:       buf,
 		Theme:        a.codeTheme,
+		Font:         a.ui.Font.EditorFont(),
 		OnInput:      te.onInput,
 		OnCompletion: te.complete,
 	}
@@ -101,6 +102,26 @@ func (a *App) SetEditorTheme(t *editor.Theme) {
 	a.codeTheme = t
 	for _, te := range a.editors {
 		te.st.Theme = t
+	}
+}
+
+// SyncFont hands every editor the font of the settings; the view calls it
+// each frame, as the settings dialog edits them in place.
+func (a *App) SyncFont() {
+	f := a.ui.Font.EditorFont()
+	for _, te := range a.editors {
+		te.st.Font = f
+	}
+	w := a.ui.CharWidth()
+	for _, te := range a.editors {
+		for _, g := range te.grids {
+			g.Refit(w)
+		}
+	}
+	for _, tv := range a.tables {
+		if tv.Grid != nil {
+			tv.Grid.Refit(w)
+		}
 	}
 }
 

@@ -233,7 +233,7 @@ func (s *App) planPane(c *ui.Context, r *app.RunView) {
 		}
 		body = func() {
 			ui.Text(c, "EXPLAIN · "+oneLine(r.PlanSQL, 100)).FontSize(11).FontWeight(600).TextColor(t.TextMuted).SingleLine()
-			ui.Text(c, raw).Font("Menlo").FontSize(11).Selectable()
+			s.tableFont(ui.Text(c, raw), -1).Selectable()
 		}
 	default:
 		s.resultsNote(c, "Explain the statement under the caret (⌥⇧E).")

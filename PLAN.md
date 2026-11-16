@@ -401,3 +401,6 @@ Xong khi: dùng Seeker thay recall hằng ngày.
 - `README.md`/`GUIDELINE.md` của recall ghi "không có test suite" nhưng `tests/` có 16 file.
 - Mnemonic bookmark: `TODO.md` và `README.md` ghi khác nhau; code (`SqlEditor.vue` ~dòng 161–270) là chuẩn: gán `Ctrl+Shift+<ký tự>` hoặc `Ctrl+F11` rồi ký tự, nhảy `Cmd+<ký tự>`.
 - Hai splitter của recall lệch nhau (xem M1, quyết định 15).
+
+## User todo
+- Số vào gutter mark cho book mark

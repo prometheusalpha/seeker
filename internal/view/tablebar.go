@@ -124,8 +124,8 @@ func (s *App) clauseField(c *ui.Context, tab app.Tab, tv *app.TableView, kind sq
 	if p, ok := s.core.Profile(tab.Conn); ok && p.DBType == model.MySQL {
 		d = sqltext.MySQL
 	}
-	in := ui.Autocomplete(c.Key(key), text, sqltext.ClauseCompletions(kind, *text, cols, d)).
-		Placeholder(hint).Font(gridFont).FontSize(gridFontSize).Height(26).Grow(1)
+	in := s.tableFont(ui.Autocomplete(c.Key(key), text, sqltext.ClauseCompletions(kind, *text, cols, d)), 0).
+		Placeholder(hint).Height(26).Grow(1)
 	if kind == sqltext.ClauseWhere && s.focusWhere {
 		s.focusWhere = false
 		in.Focus()

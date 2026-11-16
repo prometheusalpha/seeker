@@ -47,6 +47,8 @@ type ResultGrid struct {
 
 	hidden map[int]bool
 	widths []float32
+	// charW is the advance the widths were sized for.
+	charW  float64
 	numW   float32
 	cols   []ui.TableColumn
 	colMap []int
@@ -74,6 +76,11 @@ func parseColID(id string) (int, bool) {
 // first and last rows and the headers, once, so the columns can be
 // virtualised (they need a width each) and do not jump as rows scroll in.
 func NewResultGrid(res driver.Result, target *TableTarget) *ResultGrid {
+	return newResultGrid(res, target, grid.GridCharWidth)
+}
+
+// newResultGrid sizes the columns for a monospace advance of charW px.
+func newResultGrid(res driver.Result, target *TableTarget, charW float64) *ResultGrid {
 	g := &ResultGrid{
 		Columns: res.Columns, Rows: res.Rows, Target: target,
 		Row: -1, hidden: map[int]bool{}, Edits: map[string]grid.PendingEdit{},
@@ -83,15 +90,26 @@ func NewResultGrid(res driver.Result, target *TableTarget) *ResultGrid {
 	g.List.Selection = &g.Sel
 	g.List.Selected = &g.Row
 	g.widths = make([]float32, len(res.Columns))
-	for i, c := range res.Columns {
-		g.widths[i] = float32(grid.AutoColumnWidth(grid.ColumnWidthInput{
-			Header:    c.Name,
-			Values:    grid.SampleColumnValues(res.Rows, i, c.Type, grid.GridSampleRows),
-			CharWidth: grid.GridCharWidth,
-		}))
-	}
+	g.Refit(charW)
 	g.numW = float32(max(44, 16+8*len(strconv.Itoa(max(1, len(res.Rows))))))
 	return g
+}
+
+// Refit sizes the columns again for a monospace advance of charW px, when
+// the font changed. Widths the user dragged stay as they set them.
+func (g *ResultGrid) Refit(charW float64) {
+	if charW == g.charW {
+		return
+	}
+	g.charW = charW
+	for i, c := range g.Columns {
+		g.widths[i] = float32(grid.AutoColumnWidth(grid.ColumnWidthInput{
+			Header:    c.Name,
+			Values:    grid.SampleColumnValues(g.Rows, i, c.Type, grid.GridSampleRows),
+			CharWidth: charW,
+		}))
+	}
+	g.valid = false
 }
 
 // Signature identifies the columns, so a layout is only carried over to a

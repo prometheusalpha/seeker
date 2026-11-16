@@ -18,6 +18,7 @@ import (
 
 	"github.com/egoist/mygo/ui/editor"
 
+	"seeker/internal/grid"
 	"seeker/internal/model"
 	"seeker/internal/pool"
 	"seeker/internal/secret"
@@ -29,6 +30,7 @@ import (
 // store cannot import, so a fresh install starts from the defaults.
 const (
 	settingTheme  = "theme"
+	settingFont   = "font"
 	settingLayout = "layout"
 	settingTabs   = "tabs"
 	// saveDelay is how long typing holds off a write; recall used 300 ms for
@@ -42,6 +44,7 @@ type Update func(fn func())
 // UI is the settings that describe the window rather than the data.
 type UI struct {
 	Theme       theme.Settings
+	Font        theme.Font
 	SidebarW    float32
 	EditorPct   float32
 	HideSidebar bool
@@ -53,8 +56,13 @@ type layout struct {
 	HideSidebar bool    `json:"hideSidebar"`
 }
 
+// CharWidth is the monospace advance of the grid's font in px. The grid's
+// widths were tuned to 8px at 12pt, and a monospace advance scales with the
+// size, so a family other than the 0.6em ones needs measuring instead.
+func (u UI) CharWidth() float64 { return grid.GridCharWidth * u.Font.Size / 12 }
+
 func defaultUI() UI {
-	return UI{Theme: theme.DefaultSettings(), SidebarW: 260, EditorPct: 48}
+	return UI{Theme: theme.DefaultSettings(), Font: theme.DefaultFont(), SidebarW: 260, EditorPct: 48}
 }
 
 // Toast is a message the view shows once. Action, with Run, adds a button.
@@ -157,6 +165,9 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 	if err := db.Setting(ctx, settingTheme, &a.ui.Theme); err != nil && !errors.Is(err, store.ErrNoSetting) {
 		a.toast("Could not read the theme: " + err.Error())
 	}
+	if err := db.Setting(ctx, settingFont, &a.ui.Font); err != nil && !errors.Is(err, store.ErrNoSetting) {
+		a.toast("Could not read the fonts: " + err.Error())
+	}
 	var l layout
 	if err := db.Setting(ctx, settingLayout, &l); err != nil && !errors.Is(err, store.ErrNoSetting) {
 		a.toast("Could not read the window layout: " + err.Error())
@@ -229,6 +240,11 @@ func (a *App) Sync() {
 		a.saves.later(settingTheme, func() {
 			if err := a.db.SetSetting(a.ctx, settingTheme, ui.Theme); err != nil {
 				a.upd(func() { a.toast("Could not save the theme: " + err.Error()) })
+			}
+		})
+		a.saves.later(settingFont, func() {
+			if err := a.db.SetSetting(a.ctx, settingFont, ui.Font); err != nil {
+				a.upd(func() { a.toast("Could not save the fonts: " + err.Error()) })
 			}
 		})
 		l := layout{a.ui.SidebarW, a.ui.EditorPct, a.ui.HideSidebar}

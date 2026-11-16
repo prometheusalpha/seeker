@@ -10,7 +10,7 @@ func (s *App) settingsDialog(c *ui.Context) {
 	t := c.Theme()
 	u := s.core.UI()
 	ui.Modal(c, &s.settingsOpen, func() {
-		ui.Column(c).Width(420).Padding(20).Gap(14).Children(func() {
+		ui.Column(c).Width(480).Padding(20).Gap(14).Children(func() {
 			ui.Text(c, "Settings").FontSize(16).Bold()
 			field := func(label string, control func()) {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
@@ -34,6 +34,20 @@ func (s *App) settingsDialog(c *ui.Context) {
 				ui.Text(c, "Accent applies to Catppuccin themes; the default themes follow the system's accent.").
 					FontSize(11).TextColor(t.TextMuted)
 			}
+			field("Editor font", func() {
+				ui.TextInput(c, &u.Font.Editor).FillWidth().Label("Editor font").Placeholder("System monospace")
+			})
+			field("Table font", func() {
+				ui.TextInput(c, &u.Font.Table).FillWidth().Label("Table font").Placeholder(fallbackFamily)
+			})
+			field("Font size", func() {
+				ui.NumberInput(c, &u.Font.Size, 8, 32, 1).Width(110).Label("Font size")
+			})
+			field("Font features", func() {
+				ui.TextInput(c, &u.Font.Features).FillWidth().Label("Font features").Placeholder("ss01, calt, -liga")
+			})
+			ui.Text(c, "Fonts are the family names installed on this Mac. Features follow ghostty's font-feature: comma-separated tags, -tag turns one off.").
+				FontSize(11).TextColor(t.TextMuted)
 			ui.Row(c).FillWidth().Children(func() {
 				ui.Spacer(c)
 				if ui.Button(c, "Done").Clicked() {

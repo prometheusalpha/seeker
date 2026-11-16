@@ -18,6 +18,7 @@ type Dialogs struct {
 	Conn      ConnDialog
 	Databases DatabasesDialog
 	Close     CloseDialog
+	Files     FileDialog
 }
 
 // The two engines M2 connects to; Redis joins in M7.

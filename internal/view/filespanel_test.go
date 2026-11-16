@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -95,5 +96,147 @@ func TestFilesPanelClickOpensFile(t *testing.T) {
 	p.frame(tt)
 	if tab, ok := core.ActiveTab(); !ok || tab.Title != "users.sql" || tab.SQL != "select 42" {
 		t.Fatalf("active tab: %+v", tab)
+	}
+}
+
+// A row's menu offers what the row can do, the rename dialog takes a name
+// and Enter, and the file is renamed on disk and in the tree.
+func TestFilesPanelRenameThroughDialog(t *testing.T) {
+	core, p, tt, folder := filesWindow(t)
+	core.AddFolder(folder)
+	p.waitUntil(t, tt, "the file", func() bool { return tt.HasText("users.sql") })
+
+	if err := tt.RightClick("users.sql"); err != nil {
+		t.Fatal(err)
+	}
+	menu := tt.Menu()
+	for _, want := range []string{"Open", "Cut", "Copy", "Paste", "Rename…", "Move to Trash…", "Reveal in Finder"} {
+		if !slices.Contains(menu, want) {
+			t.Errorf("menu lacks %q: %v", want, menu)
+		}
+	}
+	if slices.Contains(menu, "Close folder") || slices.Contains(menu, "New file…") {
+		t.Errorf("a file's menu has a folder's items: %v", menu)
+	}
+	if err := tt.ChooseMenuItem("Rename…"); err != nil {
+		t.Fatal(err)
+	}
+	p.frame(tt)
+	if !tt.HasText("Rename") {
+		t.Fatalf("no dialog: %v", tt.Texts())
+	}
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("people.sql")
+	tt.Key(0, ui.KeyEnter)
+	p.waitUntil(t, tt, "the renamed file", func() bool { return tt.HasText("people.sql") && !tt.HasText("users.sql") })
+	if _, err := os.Stat(filepath.Join(folder, "people.sql")); err != nil {
+		t.Errorf("not renamed on disk: %v", err)
+	}
+}
+
+// An opened folder's menu has the folder items and no rename or delete.
+func TestFilesPanelRootMenu(t *testing.T) {
+	core, p, tt, folder := filesWindow(t)
+	core.AddFolder(folder)
+	p.waitUntil(t, tt, "the folder", func() bool { return tt.HasText("queries") })
+	if err := tt.RightClick("queries"); err != nil {
+		t.Fatal(err)
+	}
+	menu := tt.Menu()
+	for _, want := range []string{"New file…", "New folder…", "Paste", "Reveal in Finder", "Scan again", "Close folder"} {
+		if !slices.Contains(menu, want) {
+			t.Errorf("menu lacks %q: %v", want, menu)
+		}
+	}
+	for _, bad := range []string{"Rename…", "Move to Trash…", "Cut", "Copy"} {
+		if slices.Contains(menu, bad) {
+			t.Errorf("an opened folder offers %q", bad)
+		}
+	}
+}
+
+// The files panel is set off from the islands beside it by the same gap the
+// sidebar is.
+func TestFilesPanelGap(t *testing.T) {
+	_, _, tt, _ := filesWindow(t)
+	img := tt.Image()
+	y := 300
+	// Runs of the canvas color along a row, between island edges.
+	canvas := img.RGBAAt(2, y)
+	var gaps []int
+	run := 0
+	for x := 0; x < img.Bounds().Dx(); x++ {
+		if img.RGBAAt(x, y) == canvas {
+			run++
+			continue
+		}
+		if run > 3 && x > 20 {
+			gaps = append(gaps, run)
+		}
+		run = 0
+	}
+	if len(gaps) != 2 || abs(gaps[0]-gaps[1]) > 2 {
+		t.Errorf("gaps between islands: %v", gaps)
+	}
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// Dragging the divider to the left makes the panel wider, to the right
+// narrower: the panel is on the right, so the divider follows the pointer.
+func TestFilesPanelDividerFollowsPointer(t *testing.T) {
+	core, p, tt, _ := filesWindow(t)
+	u := core.UI()
+	files, _ := tt.Find("FILES")
+	for _, dx := range []float32{-100, 60} {
+		before := u.FilesW
+		moved := false
+		// The divider is a few px wide, in the gap left of the panel.
+		for off := float32(10); off < 24 && !moved; off += 2 {
+			x := files.X - off
+			tt.Press(x, 400)
+			tt.Move(x+dx, 400)
+			tt.Release(x+dx, 400)
+			p.frame(tt)
+			moved = u.FilesW != before
+			if moved && (dx < 0) != (u.FilesW > before) {
+				t.Errorf("dragged %vpx: width %v -> %v", dx, before, u.FilesW)
+			}
+			if !moved {
+				files, _ = tt.Find("FILES")
+			}
+		}
+		if !moved {
+			t.Errorf("drag %v never found the divider", dx)
+		}
+	}
+}
+
+// The row clicked is the row chosen, so it is highlighted: for a folder and
+// for a file.
+func TestFilesPanelClickChoosesRow(t *testing.T) {
+	core, p, tt, folder := filesWindow(t)
+	core.AddFolder(folder)
+	p.waitUntil(t, tt, "the folder", func() bool { return tt.HasText("reports") && tt.HasText("users.sql") })
+	out := core.FilesOutline()
+	chosen := func() string {
+		if r := *core.FilesRow(); r >= 0 && r < out.Rows() {
+			return filepath.Base(out.Item(r))
+		}
+		return ""
+	}
+	for _, name := range []string{"reports", "users.sql", "queries"} {
+		if err := tt.Click(name); err != nil {
+			t.Fatal(err)
+		}
+		p.frame(tt)
+		if got := chosen(); got != name {
+			t.Errorf("clicked %q: chosen row is %q", name, got)
+		}
 	}
 }

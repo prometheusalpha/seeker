@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/plugins/sqlite"
 
@@ -120,4 +121,15 @@ func abs(n int) int {
 		return -n
 	}
 	return n
+}
+
+// RepathBookmarks follows a file, or a folder and all under it, to where it
+// was moved or renamed to: the rows keep their mnemonic, line and hash, and
+// so are not dropped as the file of the old path missing.
+func (s *Store) RepathBookmarks(ctx context.Context, from, to string) error {
+	n := utf8.RuneCountInString(from)
+	_, err := s.db.Execute(ctx,
+		"UPDATE bookmarks SET path = ? || substr(path, ?) WHERE path = ? OR substr(path, 1, ?) = ?",
+		to, n+1, from, n+1, from+"/")
+	return err
 }

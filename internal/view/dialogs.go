@@ -19,6 +19,7 @@ func (s *App) dialogs(c *ui.Context, pal palette) {
 	s.connectionDialog(c, pal, &d.Conn)
 	s.databasesDialog(c, pal, &d.Databases)
 	s.closeDialog(c)
+	s.filesDialog(c)
 }
 
 func (s *App) connectionDialog(c *ui.Context, pal palette, d *app.ConnDialog) {

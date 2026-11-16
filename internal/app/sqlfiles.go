@@ -45,6 +45,7 @@ type Files struct {
 	Row     int
 
 	scans       map[string]*folderScan
+	clip        fileClip
 	filterTimer *time.Timer
 	saved       filesSettings
 }

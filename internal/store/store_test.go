@@ -180,3 +180,41 @@ func TestImportRecallSkipsWithConnections(t *testing.T) {
 		t.Errorf("missing file: %d, %v", n, err)
 	}
 }
+
+// A bookmark follows its file when the file or a folder above it is
+// renamed; a path that only shares a prefix is left alone.
+func TestRepathBookmarks(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	dir := t.TempDir()
+	for _, f := range []string{"a/x.sql", "a/deep/y.sql", "ab/z.sql", "b/x.sql"} {
+		p := filepath.Join(dir, f)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte("select 1"), 0o644)
+	}
+	for m, f := range map[string]string{"x": "a/x.sql", "y": "a/deep/y.sql", "z": "ab/z.sql"} {
+		if _, err := s.SetBookmark(ctx, m, filepath.Join(dir, f), 1, "select 1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Rename(filepath.Join(dir, "a"), filepath.Join(dir, "c")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RepathBookmarks(ctx, filepath.Join(dir, "a"), filepath.Join(dir, "c")); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	bs, err := s.Bookmarks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range bs {
+		got[b.Mnemonic] = b.Path
+	}
+	want := map[string]string{"x": filepath.Join(dir, "c/x.sql"), "y": filepath.Join(dir, "c/deep/y.sql"), "z": filepath.Join(dir, "ab/z.sql")}
+	for m, p := range want {
+		if got[m] != p {
+			t.Errorf("%s: %q, want %q", m, got[m], p)
+		}
+	}
+}

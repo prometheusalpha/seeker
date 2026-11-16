@@ -92,7 +92,7 @@ func (s *App) body(c *ui.Context, pal palette) {
 	main := func() { s.workspace(c, pal) }
 	if !s.core.UI().HideSidebar {
 		main = func() {
-			gapSplit(c, pal, false, func(first, second func(func())) {
+			gapSplit(c, pal, false, false, func(first, second func(func())) {
 				ui.Split(c, &s.core.UI().SidebarW, func() { first(func() { s.sidebar(c, pal) }) }, func() { second(func() { s.workspace(c, pal) }) }).SplitReset(260).Fill()
 			})
 		}
@@ -104,12 +104,16 @@ func (s *App) body(c *ui.Context, pal palette) {
 	// The files panel's width is the first pane's, as Split sizes it, and
 	// the panel sits on the right: the split runs right to left, and each
 	// pane lays its own content out left to right again.
-	gapSplit(c, pal, false, func(first, second func(func())) {
+	gapSplit(c, pal, false, true, func(first, second func(func())) {
 		ltr := func(content func()) func() {
 			return func() { ui.Box(c).Fill().Direction(ui.LeftToRight).Children(content) }
 		}
-		ui.Split(c, &s.core.UI().FilesW, func() { first(ltr(func() { s.filesPanel(c, pal) })) }, func() { second(ltr(main)) }).
-			Direction(ui.RightToLeft).SplitReset(240).Fill()
+		// The direction is the box's, set before the split is built: a split
+		// reads it as it builds, to turn a drag of the divider the right way.
+		ui.Box(c).Fill().Direction(ui.RightToLeft).Children(func() {
+			ui.Split(c, &s.core.UI().FilesW, func() { first(ltr(func() { s.filesPanel(c, pal) })) }, func() { second(ltr(main)) }).
+				SplitReset(240).Fill()
+		})
 	})
 }
 
@@ -118,7 +122,7 @@ func (s *App) body(c *ui.Context, pal palette) {
 // hovered or dragged, and each pane keeps half the gap. Split draws the
 // line in the theme's Border, hence the theme around it; the panes get the
 // window's theme back.
-func gapSplit(c *ui.Context, pal palette, vertical bool, build func(first, second func(func()))) {
+func gapSplit(c *ui.Context, pal palette, vertical, rtl bool, build func(first, second func(func()))) {
 	base := c.Theme()
 	hidden := *base
 	hidden.Border = pal.Canvas
@@ -133,6 +137,9 @@ func gapSplit(c *ui.Context, pal palette, vertical bool, build func(first, secon
 	first, second := pane([]float32{0, half, 0, 0}), pane([]float32{0, 0, 0, half})
 	if vertical {
 		first, second = pane([]float32{0, 0, half, 0}), pane([]float32{half, 0, 0, 0})
+	}
+	if rtl {
+		first, second = pane([]float32{0, 0, 0, half}), pane([]float32{0, half, 0, 0})
 	}
 	ui.Themed(c, &hidden).Background(ui.Transparent).Fill().Children(func() { build(first, second) })
 }
@@ -229,7 +236,7 @@ func (s *App) workspace(c *ui.Context, pal palette) {
 		})
 		return
 	}
-	gapSplit(c, pal, true, func(first, second func(func())) {
+	gapSplit(c, pal, true, false, func(first, second func(func())) {
 		ui.SplitVerticalPercent(c, &s.core.UI().EditorPct, func() {
 			first(func() {
 				island(c, pal).Fill().Children(func() {

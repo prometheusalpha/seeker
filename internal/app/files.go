@@ -275,6 +275,11 @@ func (a *App) SetFileBinding(path string, ds model.Datasource) {
 	if len(a.bindings) > maxBindings {
 		a.bindings = a.bindings[:maxBindings]
 	}
+	a.saveBindings()
+}
+
+// saveBindings writes the bindings as they stand now.
+func (a *App) saveBindings() {
 	saved := slices.Clone(a.bindings)
 	a.saves.later(settingBindings, func() {
 		if err := a.db.SetSetting(a.ctx, settingBindings, saved); err != nil {

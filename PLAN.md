@@ -385,7 +385,8 @@ Gotchas:
 Kết quả phần phím tắt (2026-11-17; **chưa test tay trong app**):
 - `app/shortcuts.go`: bảng lệnh (id của recall + `tab.reopen` ⌘⇧T, `editor.save` ⌘S, `result.copy` ⌘C cho đổi được), override lưu ở settings `shortcuts` (key theo tên, entry hỏng rơi về default). Một chord chỉ thuộc một lệnh: lệnh đang giữ nó bị **unbind** kèm toast (recall trả về default, có thể lại trùng).
 - View đọc chord qua `s.pressed(c, cmd)`, editor qua `ShortcutIs`; tooltip/menu in chord hiện tại. Settings chia sidebar trái (Appearance | Shortcuts): bấm chord → "Press keys…", Esc huỷ, Backspace unbind, mọi chord tạm dừng khi đang ghi.
-- Chưa có: `⌘↵` (Run) và bookmark chưa đổi được; ⌃Tab/⌃⇧Tab đã nối (trước đó chỉ có ⌘⌥←/→). Explain viewer, Snippets vẫn chưa làm.
+- Chưa có: `⌘↵` (Run) và bookmark chưa đổi được; ⌃Tab/⌃⇧Tab đã nối (trước đó chỉ có ⌘⌥←/→). Snippets vẫn chưa làm.
+- Explain viewer (`view/plan.go`; chưa test tay): Canvas | Tree | Raw như recall, mở Canvas nếu parser ra node, Raw nếu không. Canvas: thẻ node (icon theo loại, thanh nhiệt, `×n` khi rows thực tế lệch ≥2 lần), cạnh gấp khúc dày theo rows, zoom 50–160% bằng nút (chưa có cuộn chuột/pinch), kéo để pan, Fit; inspector chỉ mở khi chọn node (recall dùng node nóng nhất làm mặc định). `RunView.Parsed` parse một lần khi plan về. Hit-test dưới `Scale` do mygo lo; kích thước viewport đọc trong `Draw` để Fit.
 - Giao diện: font đã có; UI size (recall: 80–150%, bước 5, `c.SetZoom`, stepper trong Settings, không có phím tắt) lưu ở settings `scale`. Count của table tab chuyển vào status bar thành `đã-tải/tổng rows` (`N+` bấm để đếm, như recall); nút Export là icon (chưa test tay).
 
 ### M7: Redis

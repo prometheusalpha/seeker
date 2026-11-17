@@ -68,7 +68,7 @@ func (s *App) queryResults(c *ui.Context, tab app.Tab) {
 	})
 	ui.Divider(c)
 	if pane.View == app.ViewExplain {
-		s.planPane(c, run)
+		s.planPane(c, tab.ID, run)
 		s.statusBar(c, run.Plan != nil, "", nil, nil)
 		return
 	}
@@ -300,33 +300,6 @@ func (s *App) errorBlock(c *ui.Context, tabID string, res driver.Result) {
 		if res.Err.Detail != "" {
 			ui.Text(c, res.Err.Detail).FontSize(11).TextColor(t.TextMuted).Selectable().Wrap()
 		}
-	})
-}
-
-// planPane shows an Explain's answer; the plan viewer is M6.
-func (s *App) planPane(c *ui.Context, r *app.RunView) {
-	t := c.Theme()
-	var body func()
-	switch {
-	case r.Explaining:
-		body = func() { ui.Text(c, "Explaining…").FontSize(12).TextColor(t.TextMuted) }
-	case r.PlanErr != "":
-		body = func() { ui.Text(c, "Explain failed: "+r.PlanErr).FontSize(12).TextColor(t.Danger).Selectable().Wrap() }
-	case r.Plan != nil:
-		raw := r.Plan.Raw
-		if len(raw) > 6000 {
-			raw = raw[:6000] + "\n…"
-		}
-		body = func() {
-			ui.Text(c, "EXPLAIN · "+oneLine(r.PlanSQL, 100)).FontSize(11).FontWeight(600).TextColor(t.TextMuted).SingleLine()
-			s.tableFont(ui.Text(c, raw), -1).Selectable()
-		}
-	default:
-		s.resultsNote(c, "Explain the statement under the caret ("+s.chordText(app.EditorExplain)+").")
-		return
-	}
-	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-		ui.Column(c).FillWidth().Padding(10, 12).Gap(4).Children(body)
 	})
 }
 

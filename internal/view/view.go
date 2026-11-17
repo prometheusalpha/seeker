@@ -36,6 +36,8 @@ type App struct {
 	settingsSection string
 	recordID        app.Command
 	systemDark      bool
+	// plans is the plan viewer's state for each tab.
+	plans map[string]*planView
 
 	// refocusGrid hands the keyboard back to the grid after a cell editor
 	// closes; focusWhere moves it to the WHERE field (⌘L).

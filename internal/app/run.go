@@ -12,6 +12,8 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 
 	"seeker/internal/driver"
+	"seeker/internal/explain"
+	"seeker/internal/model"
 	"seeker/internal/sqlfmt"
 	"seeker/internal/sqltext"
 )
@@ -36,7 +38,10 @@ type runState struct {
 
 	Explaining bool
 	Plan       *driver.Plan
-	PlanErr    string
+	// Parsed is Plan read into nodes for the viewer; its Nodes are empty for
+	// an answer the parser does not read, which the viewer shows as raw.
+	Parsed  *explain.Plan
+	PlanErr string
 	// PlanSQL is the statement the plan is of.
 	PlanSQL string
 }
@@ -130,7 +135,7 @@ func (a *App) run(te *tabEditor, script string, base int) {
 	r.gen++
 	gen := r.gen
 	*r = runState{gen: gen, cancel: cancel, Running: true, Started: time.Now(), Script: script, Base: base,
-		Plan: r.Plan, PlanErr: r.PlanErr, PlanSQL: r.PlanSQL}
+		Plan: r.Plan, Parsed: r.Parsed, PlanErr: r.PlanErr, PlanSQL: r.PlanSQL}
 	// The new run's rows get new grids: a selection or a hidden column of
 	// the last run's must not stick to them.
 	te.grids, te.pane = nil, ResultPane{}
@@ -268,8 +273,7 @@ func (a *App) ExplainSmart(id string) {
 }
 
 // Explain asks the server for the estimated plan of sql, on the tab's
-// session, never executing it. The viewer for it is M6; until then the
-// result shows the server's answer as text.
+// session, never executing it.
 func (a *App) Explain(id, sql string) {
 	te := a.editors[id]
 	t, ok := a.TabByID(id)
@@ -282,7 +286,7 @@ func (a *App) Explain(id, sql string) {
 	}
 	a.ensureTabConnected(t)
 	cs := a.conn(t.Conn)
-	te.run.Explaining, te.run.Plan, te.run.PlanErr, te.run.PlanSQL = true, nil, "", sql
+	te.run.Explaining, te.run.Plan, te.run.Parsed, te.run.PlanErr, te.run.PlanSQL = true, nil, nil, "", sql
 	te.pane.View = ViewExplain
 	gen := te.run.gen
 	go func() {
@@ -305,7 +309,16 @@ func (a *App) Explain(id, sql string) {
 				te.run.PlanErr = err.Error()
 				return
 			}
-			te.run.Plan = &plan
+			d := sqltext.Postgres
+			if p, ok := a.Profile(t.Conn); ok && p.DBType == model.MySQL {
+				d = sqltext.MySQL
+			}
+			parsed, perr := explain.Parse(d, plan.Raw)
+			if perr != nil {
+				te.run.PlanErr = "The server returned no plan"
+				return
+			}
+			te.run.Plan, te.run.Parsed = &plan, parsed
 		})
 	}()
 }

@@ -385,7 +385,8 @@ Gotchas:
 Kết quả phần phím tắt (2026-11-17; **chưa test tay trong app**):
 - `app/shortcuts.go`: bảng lệnh (id của recall + `tab.reopen` ⌘⇧T, `editor.save` ⌘S, `result.copy` ⌘C cho đổi được), override lưu ở settings `shortcuts` (key theo tên, entry hỏng rơi về default). Một chord chỉ thuộc một lệnh: lệnh đang giữ nó bị **unbind** kèm toast (recall trả về default, có thể lại trùng).
 - View đọc chord qua `s.pressed(c, cmd)`, editor qua `ShortcutIs`; tooltip/menu in chord hiện tại. Settings chia sidebar trái (Appearance | Shortcuts): bấm chord → "Press keys…", Esc huỷ, Backspace unbind, mọi chord tạm dừng khi đang ghi.
-- Chưa có: `⌘↵` (Run) và bookmark chưa đổi được; ⌃Tab/⌃⇧Tab đã nối (trước đó chỉ có ⌘⌥←/→). Explain viewer, Snippets, Giao diện (font/scale) vẫn chưa làm.
+- Chưa có: `⌘↵` (Run) và bookmark chưa đổi được; ⌃Tab/⌃⇧Tab đã nối (trước đó chỉ có ⌘⌥←/→). Explain viewer, Snippets vẫn chưa làm.
+- Giao diện: font đã có; UI size (recall: 80–150%, bước 5, `c.SetZoom`, stepper trong Settings, không có phím tắt) lưu ở settings `scale`. Count của table tab chuyển vào status bar thành `đã-tải/tổng rows` (`N+` bấm để đếm, như recall); nút Export là icon (chưa test tay).
 
 ### M7: Redis
 

@@ -10,6 +10,7 @@ import (
 
 	"seeker/internal/app"
 	"seeker/internal/grid"
+	"seeker/internal/icons"
 	"seeker/internal/theme"
 )
 
@@ -353,16 +354,16 @@ func (s *App) cellMenu(c *ui.Context, m *ui.Menu, g *app.ResultGrid, gc gridCtx,
 	s.columnsMenu(m, g)
 }
 
-// exportMenu is the Export button: the whole result as CSV or JSON.
+// exportMenu is the Export icon button: the whole result as CSV or JSON.
 func (s *App) exportMenu(c *ui.Context, g *app.ResultGrid, title string) {
-	ui.PopoverMenuButton(c.Key("export"), "Export", func(m *ui.Menu) {
+	iconButton(c, icons.FileDown, "Export").Tooltip("Write the whole result to a file").Disabled(len(g.Rows) == 0).PopoverMenuButton(func(m *ui.Menu) {
 		if m.Item("CSV").ID("csv").Chosen() {
 			s.core.ExportGrid(g, title, "csv")
 		}
 		if m.Item("JSON").ID("json").Chosen() {
 			s.core.ExportGrid(g, title, "json")
 		}
-	}).Height(26).Disabled(len(g.Rows) == 0).Tooltip("Write the whole result to a file")
+	})
 }
 
 // columnsButton is the menu of columns to show or hide.

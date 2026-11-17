@@ -72,6 +72,7 @@ func (s *App) View(c *ui.Context) {
 	u.Theme.Appearance = appearances[s.appearance]
 	res := theme.Resolve(u.Theme, c.Theme())
 	c.SetTheme(&res.UI)
+	c.SetZoom(float32(app.SnapScale(u.Scale)) / 100)
 	s.core.SetEditorTheme(res.Code)
 	s.measureTableFont(c)
 	s.core.SyncFont()

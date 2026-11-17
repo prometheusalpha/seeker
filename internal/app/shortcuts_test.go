@@ -117,3 +117,11 @@ func TestAccelerator(t *testing.T) {
 		t.Errorf("unbound: %q", got)
 	}
 }
+
+func TestSnapScale(t *testing.T) {
+	for in, want := range map[int]int{0: 100, 103: 105, 102: 100, 10: ScaleMin, 999: ScaleMax, -5: ScaleMin, 125: 125} {
+		if got := SnapScale(in); got != want {
+			t.Errorf("SnapScale(%d) = %d, want %d", in, got, want)
+		}
+	}
+}

@@ -28,6 +28,7 @@ var (
 	Download     = load("download")
 	Eye          = load("eye")
 	FileCode     = load("file-code")
+	FileDown     = load("file-down")
 	Folder       = load("folder")
 	FolderTree   = load("folder-tree")
 	Key          = load("key-round")

@@ -175,6 +175,11 @@ func (s *App) statusBar(c *ui.Context, show bool, text string, g *app.ResultGrid
 	t := c.Theme()
 	ui.Divider(c)
 	ui.Row(c).Height(30).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(12).Children(func() {
+		if tab != nil && g != nil {
+			if tv := s.core.TableOf(tab.ID); tv != nil {
+				s.rowCount(c, *tab, tv, g)
+			}
+		}
 		ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		ui.Spacer(c)
 		if g != nil {
@@ -194,6 +199,39 @@ func (s *App) statusBar(c *ui.Context, show bool, text string, g *app.ResultGrid
 				s.paging(c, *tab, tv)
 			}
 		}
+	})
+}
+
+// rowCount is a table tab's "loaded/total rows", as recall's status bar has
+// it. `COUNT(*)` is a full scan, so it is never run on load: while a further
+// page may exist the total reads "N+", and clicking it runs the one count
+// that makes it exact; clicking the exact total counts again. The count is of
+// the filter, not the page, so it holds across paging.
+func (s *App) rowCount(c *ui.Context, tab app.Tab, tv *app.TableView, g *app.ResultGrid) {
+	t := c.Theme()
+	loaded := (tv.Page-1)*tv.PageSize + len(g.Rows)
+	ui.Row(c).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, strconv.Itoa(loaded)+"/").FontSize(11).SingleLine()
+		count := func(label, tip string) {
+			b := ui.ButtonBase(c.Key("count")).Label(tip).Tooltip(tip)
+			b.Children(func() {
+				ui.Text(c, label).FontSize(11).SingleLine().Underline().DecorationColor(t.TextMuted)
+			})
+			if b.Clicked() {
+				s.core.CountTable(tab.ID)
+			}
+		}
+		switch {
+		case tv.Counting:
+			ui.Text(c, "…").FontSize(11).TextColor(t.TextMuted)
+		case tv.HasCount:
+			count(strconv.FormatInt(tv.Count, 10), "Count again")
+		case tv.HasNextPage():
+			count(strconv.Itoa(loaded)+"+", "Count every row matching the filter")
+		default:
+			ui.Text(c, strconv.Itoa(loaded)).FontSize(11).SingleLine()
+		}
+		ui.Text(c, " rows").FontSize(11).SingleLine()
 	})
 }
 

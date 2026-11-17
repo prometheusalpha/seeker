@@ -32,6 +32,7 @@ const (
 	settingTheme  = "theme"
 	settingFont   = "font"
 	settingLayout = "layout"
+	settingScale  = "scale"
 	settingTabs   = "tabs"
 	// saveDelay is how long typing holds off a write; recall used 300 ms for
 	// tabs.
@@ -55,6 +56,25 @@ type UI struct {
 	// CharW is the advance of the table font as the view measured it, 0
 	// before it has.
 	CharW float64
+	// Scale is the zoom of the whole window in percent, on ScaleStep's grid.
+	Scale int
+}
+
+// Scale's band and step are recall's: percent rather than a multiplier, as
+// 17 steps of 0.05 would drift off the grid and into the stored value.
+const (
+	ScaleMin  = 80
+	ScaleMax  = 150
+	ScaleStep = 5
+)
+
+// SnapScale clamps into the band and onto the step grid, so a stored 103
+// reads 105; 0, what a missing setting leaves, is 100.
+func SnapScale(percent int) int {
+	if percent == 0 {
+		return 100
+	}
+	return min(ScaleMax, max(ScaleMin, (percent+ScaleStep/2)/ScaleStep*ScaleStep))
 }
 
 type layout struct {
@@ -77,7 +97,7 @@ func (u UI) CharWidth() float64 {
 }
 
 func defaultUI() UI {
-	return UI{Theme: theme.DefaultSettings(), Font: theme.DefaultFont(), SidebarW: 260, EditorPct: 48, FilesW: 240}
+	return UI{Theme: theme.DefaultSettings(), Font: theme.DefaultFont(), SidebarW: 260, EditorPct: 48, FilesW: 240, Scale: 100}
 }
 
 // Toast is a message the view shows once. Action, with Run, adds a button.
@@ -200,6 +220,10 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 	if err := db.Setting(ctx, settingFont, &a.ui.Font); err != nil && !errors.Is(err, store.ErrNoSetting) {
 		a.toast("Could not read the fonts: " + err.Error())
 	}
+	if err := db.Setting(ctx, settingScale, &a.ui.Scale); err != nil && !errors.Is(err, store.ErrNoSetting) {
+		a.toast("Could not read the UI size: " + err.Error())
+	}
+	a.ui.Scale = SnapScale(a.ui.Scale)
 	var l layout
 	if err := db.Setting(ctx, settingLayout, &l); err != nil && !errors.Is(err, store.ErrNoSetting) {
 		a.toast("Could not read the window layout: " + err.Error())
@@ -296,6 +320,11 @@ func (a *App) Sync() {
 		a.saves.later(settingFont, func() {
 			if err := a.db.SetSetting(a.ctx, settingFont, ui.Font); err != nil {
 				a.upd(func() { a.toast("Could not save the fonts: " + err.Error()) })
+			}
+		})
+		a.saves.later(settingScale, func() {
+			if err := a.db.SetSetting(a.ctx, settingScale, ui.Scale); err != nil {
+				a.upd(func() { a.toast("Could not save the UI size: " + err.Error()) })
 			}
 		})
 		l := layout{a.ui.SidebarW, a.ui.EditorPct, a.ui.HideSidebar, a.ui.FilesW, a.ui.HideFiles}

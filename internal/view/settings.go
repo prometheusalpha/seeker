@@ -1,6 +1,8 @@
 package view
 
 import (
+	"strconv"
+
 	"github.com/egoist/mygo/ui"
 
 	"seeker/internal/app"
@@ -85,6 +87,18 @@ func (s *App) appearancePanel(c *ui.Context) {
 		ui.Text(c, "Accent applies to Catppuccin themes; the default themes follow the system's accent.").
 			FontSize(11).TextColor(t.TextMuted)
 	}
+	field("UI size", func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+			u.Scale = app.SnapScale(u.Scale)
+			if ui.Button(c.Key("smaller"), "−").Width(28).Disabled(u.Scale <= app.ScaleMin).Tooltip("Smaller interface").Clicked() {
+				u.Scale = app.SnapScale(u.Scale - app.ScaleStep)
+			}
+			ui.Text(c, strconv.Itoa(u.Scale)+"%").Width(44).TextAlign(ui.Center)
+			if ui.Button(c.Key("larger"), "+").Width(28).Disabled(u.Scale >= app.ScaleMax).Tooltip("Larger interface").Clicked() {
+				u.Scale = app.SnapScale(u.Scale + app.ScaleStep)
+			}
+		})
+	})
 	field("Editor font", func() {
 		ui.TextInput(c, &u.Font.Editor).FillWidth().Label("Editor font").Placeholder("System monospace")
 	})

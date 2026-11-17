@@ -47,10 +47,7 @@ func (s *App) tableResults(c *ui.Context, tab app.Tab) {
 	case tv.Loading:
 		summary = "Loading…"
 	case g != nil:
-		summary = fmt.Sprintf("%d rows · %s · page %d", len(g.Rows), round(tv.Duration), tv.Page)
-		if tv.HasCount {
-			summary += fmt.Sprintf(" · %d in total", tv.Count)
-		}
+		summary = fmt.Sprintf("%s · page %d", round(tv.Duration), tv.Page)
 	}
 	s.statusBar(c, tv.Loading || g != nil, summary, g, &tab)
 }
@@ -71,15 +68,9 @@ func (s *App) tableKeys(c *ui.Context, tab app.Tab) {
 // tableBar holds the filter on the left and the actions on the right, on
 // one row as in recall: WHERE and ORDER BY are raw SQL, applied on Enter.
 func (s *App) tableBar(c *ui.Context, tab app.Tab, tv *app.TableView) {
-	t := c.Theme()
 	ui.Row(c).Height(40).FillWidth().AlignItems(ui.Center).Padding(0, 8).Gap(6).Children(func() {
 		s.clauseField(c, tab, tv, sqltext.ClauseWhere)
 		s.clauseField(c, tab, tv, sqltext.ClauseOrderBy)
-		if tv.Counting {
-			ui.Text(c, "Counting…").FontSize(11).TextColor(t.TextMuted).SingleLine()
-		} else if ui.Button(c.Key("count"), "Count").Height(26).Tooltip("Count the rows under the WHERE").Clicked() {
-			s.core.CountTable(tab.ID)
-		}
 		if iconButton(c, icons.Refresh, "Reload ("+s.chordText(app.ResultRerun)+")").Clicked() {
 			s.core.ReloadTable(tab.ID)
 		}

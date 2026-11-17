@@ -101,6 +101,7 @@ type App struct {
 	tree  Tree
 	files Files
 	quick QuickOpen
+	find  FindInFiles
 	// quickTables caches what the palette searches, per connection id.
 	quickTables map[string]*quickEntry
 	tabs        Tabs
@@ -243,6 +244,7 @@ func (a *App) Close() {
 	if a.tree.filterTimer != nil {
 		a.tree.filterTimer.Stop()
 	}
+	a.stopFind()
 	a.flushAutosaves()
 	// Writes still waiting out their delay happen now, before the store
 	// closes, and later ones are dropped.

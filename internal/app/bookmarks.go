@@ -19,6 +19,8 @@ var bookmarkColor = ui.RGB(245, 158, 11)
 type jump struct {
 	tab  string
 	line int // from 1
+	// col and length select a hit, in bytes; no length is a caret alone.
+	col, length int
 }
 
 func (a *App) loadBookmarks() {
@@ -180,5 +182,13 @@ func (a *App) applyJump() {
 		return
 	}
 	a.jump = nil
-	te.st.GoTo(editor.Pos{Line: j.line - 1})
+	if j.length == 0 {
+		te.st.GoTo(editor.Pos{Line: j.line - 1, Col: j.col})
+		return
+	}
+	// The hit is read off the file as it was on disk; a tab with edits
+	// since is clamped to its line by Offset, not to the hit.
+	off := te.st.Buffer.Offset(editor.Pos{Line: j.line - 1, Col: j.col})
+	te.st.GoTo(editor.Pos{Line: j.line - 1, Col: j.col}) // centers the line
+	te.st.Select(off, off+j.length)
 }

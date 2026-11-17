@@ -326,7 +326,7 @@ Còn thiếu so với spec / ghi chú:
 - `Copy as INSERT` ghi cột theo thứ tự result, không theo thứ tự anh kéo; không có ở kết quả của query.
 - Tooltip ô chỉ có khi text rộng hơn cột; tooltip header (tên + kiểu) chưa có test.
 
-### M5: Files, Quick open, Find in files (đang làm: Files + Quick open xong, còn Find in files)
+### M5: Files, Quick open, Find in files (Files, Quick open, Find in files xong về code; chưa test tay)
 
 Phạm vi:
 - SqlFilesPanel: nhiều folder, filter glob, tạo / đổi tên / xoá / cut / copy / paste, mở trong Finder, binding datasource theo file. Panel kéo đổi độ rộng được (hiện đang cố định 240px).
@@ -346,7 +346,7 @@ Gotchas:
 - Đổi tên file đang mở: tab, bookmark (path), binding datasource phải đi theo.
 - Quick open fan-out nhiều connection: huỷ lượt cũ khi gõ tiếp, bỏ kết quả về muộn.
 
-Tiến độ M5 (commit `29634d4` fix race, `81e2cef` Files phần 1, `86fab9c` Files phần 2 + sửa layout/chọn dòng). **Files panel xong về code, chưa test tay trong app** (`go tool mygo dev`); **Quick open xong về code; chưa làm Find in files**.
+Tiến độ M5 (commit `29634d4` fix race, `81e2cef` Files phần 1, `86fab9c` Files phần 2 + sửa layout/chọn dòng). **Files panel xong về code, chưa test tay trong app** (`go tool mygo dev`); **Quick open và Find in files xong về code; chưa test tay**.
 
 Đã làm:
 - `internal/files`: `Scan` (đệ quy, depth 10, bỏ `IGNORE_DIRS`, thư mục trước), `Inside` (realpath, chặn symlink ra ngoài/vòng), `Match` (glob `*` `?` `{a,b}`, không phân biệt hoa thường). Test có symlink thoát folder, link vòng, link hỏng.
@@ -366,7 +366,7 @@ Gotchas học được (đừng lặp lại):
 Chưa làm / ghi chú:
 - Panel không multi-select (mỗi lần một entry); chưa có Reveal/Trash test với Finder thật; ô glob filter chưa test tay.
 - Quick open `⌘P` xong về code (chưa test tay): `app/quickopen.go` + `view/quickopen.go`. Ứng viên: bảng của mọi connection **đang kết nối** (PG: **mọi database** của server, mỗi database là một session riêng như sidebar, rồi mọi schema; MySQL: mọi database không bị ẩn), file dưới các folder đã mở, connection. Xếp hạng `rank.MatchFuzzy` theo tên, bảng schema hệ thống/`_` bị đẩy xuống trước (`TableDemotion`), hoà thì bảng < file < connection, tối đa 50, query rỗng không hiện gì. Danh sách bảng cache theo connection (`quickTables`) **suốt phiên chạy, không hết hạn**: đọc lần đầu (hoặc khi lần đọc trước lỗi) rồi dùng mãi, chỉ bỏ khi đổi/xoá connection (`dropConn`), nên bảng mới tạo chưa thấy cho tới lúc đó (chưa có nút làm mới); các connection chạy song song, trong một connection tối đa 16 database cùng lúc, database nào xong hiện ngay; đóng palette không huỷ lượt đọc (để dành cho lần mở sau). Lựa chọn giữ theo key khi list đổi. Enter/click: bảng → `OpenTable`, file → `ActivateFile`, connection SQL → tab query mới. Ô ở title bar bấm được. Chưa làm: tô sáng ký tự khớp (`Match.Indices` có sẵn), connection chưa kết nối thì không được tìm và palette không tự kết nối, không báo lỗi, ô tìm không nhận chuỗi `schema.table`.
-- Find in files `⌘⇧F`: cần bundle `rg 15.2.0` (pin sha256), `rg --json`, kill call cũ, `splitMask` brace glob; Enter mở file và chọn đúng chỗ (cần API chọn vùng của editor). Nên làm sau Files panel vì chạy trên các folder đã mở.
+- Find in files `⌘⇧F` xong về code (chưa test tay): `files/find.go` (`Find` chạy `rg --json`, tối đa 500 dòng rồi kill, bỏ trùng path+dòng khi folder lồng nhau, cắt dòng dài quanh hit; `SplitMask` giữ brace glob; cờ `--hidden --no-ignore` + bỏ các thư mục như scan, không theo symlink, độ sâu `MaxDepth+1`), `app/findinfiles.go` (state giữ query/tuỳ chọn qua lần đóng, debounce 200ms, `gen` + `cancel` kill rg của lượt cũ; mask lấy từ filter của Files panel lần mở đầu), `view/findinfiles.go` (modal: ô query, Match case / Whole word / Regex, File mask, danh sách dòng, ↑/↓, Enter hoặc click). Enter mở file (dùng lại tab nếu có) và **bôi chọn đúng hit** (offset byte của rg khớp thẳng `editor.Pos.Col`, không cần đổi UTF-16; `jump` có thêm `col/length`). Tìm `rg`: `Resources/rg` trong bundle, cạnh exe, rồi `rg` trên PATH (dev). `scripts/fetch-rg.sh` tải `rg 15.2.0` vào `resources/<os>-<arch>/rg` và kiểm sha256 theo file `.sha256` của release; **chưa chạy script này, chưa thử bản build**. Chưa làm: tô sáng chữ khớp trong dòng, `⌘⇧F` không đóng được khi đang mở (Esc đóng), điền sẵn query từ vùng chọn của editor, tab đang sửa dở có thể lệch vị trí hit so với file trên đĩa.
 
 ### M6: Explain viewer, phím tắt, snippets, giao diện
 

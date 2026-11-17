@@ -1,3 +1,7 @@
 /build/
 /.mygo/
 mygo_windows_*.syso
+
+# fetched by scripts/fetch-rg.sh
+/resources/*/rg
+/resources/*/VERSION

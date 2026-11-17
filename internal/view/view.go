@@ -72,6 +72,7 @@ func (s *App) View(c *ui.Context) {
 	s.dialogs(c, pal)
 	s.toasts(c)
 	s.quickKeys(c)
+	s.findKeys(c)
 	s.bookmarkKeys(c)
 	s.core.SyncEditors()
 	s.core.TableSync()

@@ -21,6 +21,7 @@ func (s *App) dialogs(c *ui.Context, pal palette) {
 	s.closeDialog(c)
 	s.filesDialog(c)
 	s.quickOpen(c)
+	s.findInFiles(c)
 }
 
 func (s *App) connectionDialog(c *ui.Context, pal palette, d *app.ConnDialog) {

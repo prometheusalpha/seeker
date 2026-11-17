@@ -37,6 +37,14 @@ type App struct {
 	// closes; focusWhere moves it to the WHERE field (⌘L).
 	refocusGrid bool
 	focusWhere  bool
+	// rowClicked is the tree row clicked in this frame; the outline reports
+	// a change only when the chosen row moves, so a second click on the
+	// chosen row is told apart here.
+	rowClicked *app.Node
+	// The datasource picker: whether it shows, the connection whose databases
+	// it lists and what filters them.
+	dsOpen           bool
+	dsConn, dsFilter string
 	// tableFontKey is the table font the grid's character advance was last
 	// measured for.
 	tableFontKey string

@@ -22,6 +22,9 @@ func (s *App) filesPanel(c *ui.Context, pal palette) {
 			if iconButton(c, icons.Plus, "Open folder").Clicked() {
 				s.core.ChooseFolder()
 			}
+			if iconButton(c, icons.Crosshair, "Show the open file here").Clicked() {
+				s.core.RevealActiveFile()
+			}
 			if iconButton(c, icons.Refresh, "Scan the folders again").Clicked() {
 				s.core.RescanAll()
 			}
@@ -46,6 +49,15 @@ func (s *App) filesPanel(c *ui.Context, pal palette) {
 			s.fileRow(c, path)
 		}).Grow(1).FillWidth()
 		s.fileKeys(c, tree)
+		if s.core.FileRevealPending() {
+			for i := 0; i < out.Rows(); i++ {
+				if s.core.TakeFileReveal(out.Item(i)) {
+					out.List.Choose(i)
+					out.List.ScrollTo(i, ui.Center)
+					break
+				}
+			}
+		}
 		// Enter acts on the row chosen; a click acts on the row it lands
 		// on, in fileRow, so a second click on a row chosen already does too.
 		if tree.Submitted() {

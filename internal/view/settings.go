@@ -10,7 +10,7 @@ func (s *App) settingsDialog(c *ui.Context) {
 	t := c.Theme()
 	u := s.core.UI()
 	ui.Modal(c, &s.settingsOpen, func() {
-		ui.Column(c).Width(480).Padding(20).Gap(14).Children(func() {
+		ui.Column(c).Width(480).Gap(14).Children(func() {
 			ui.Text(c, "Settings").FontSize(16).Bold()
 			field := func(label string, control func()) {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {

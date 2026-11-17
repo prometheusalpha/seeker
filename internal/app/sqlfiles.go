@@ -43,6 +43,8 @@ type Files struct {
 	Filter  string
 	Out     ui.OutlineState[string]
 	Row     int
+	// reveal is the file whose row the next build chooses and scrolls to.
+	reveal string
 
 	scans       map[string]*folderScan
 	clip        fileClip

@@ -2,6 +2,7 @@ package app
 
 import (
 	"crypto/rand"
+	"path/filepath"
 	"slices"
 
 	"seeker/internal/model"
@@ -207,7 +208,23 @@ func (a *App) newQueryTab(p model.Profile) {
 	if schema == "" && p.DBType == model.Postgres {
 		schema = "public"
 	}
+	dir := a.saveDir()
 	a.OpenQueryTab(QueryTab{Conn: p.ID, Database: p.Database, Schema: schema, Title: "Query", ForceNew: true})
+	if dir != "" && a.tabs.Active >= 0 {
+		a.newDir[a.tabs.Items[a.tabs.Active].ID] = dir
+	}
+}
+
+// saveDir is the folder a new scratch tab saves into: the folder of the
+// active tab's file, else the first folder opened in the Files panel.
+func (a *App) saveDir() string {
+	if t, ok := a.ActiveTab(); ok && t.Path != "" {
+		return filepath.Dir(t.Path)
+	}
+	if len(a.files.Folders) > 0 {
+		return a.files.Folders[0]
+	}
+	return ""
 }
 
 func (a *App) queryProfile() (model.Profile, bool) {

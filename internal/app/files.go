@@ -212,6 +212,11 @@ func (a *App) SaveAs(id string) {
 	if !strings.HasSuffix(name, ".sql") {
 		name += ".sql"
 	}
+	if dir := a.newDir[id]; dir != "" {
+		name = filepath.Join(dir, name)
+	} else if dir := a.saveDir(); dir != "" {
+		name = filepath.Join(dir, name)
+	}
 	content := t.SQL
 	pick := pickSave
 	go func() {

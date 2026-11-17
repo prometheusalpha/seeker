@@ -250,7 +250,7 @@ func (s *App) closeDialog(c *ui.Context) {
 	t := c.Theme()
 	d := &s.core.DialogsState().Close
 	modal := ui.Modal(c, &d.Open, func() {
-		ui.Column(c).Width(420).Padding(20).Gap(14).Children(func() {
+		ui.Column(c).Width(420).Gap(14).Children(func() {
 			ui.Text(c, "Unsaved changes").FontSize(16).Bold()
 			ui.Text(c, closeBody(s.core.PendingTabs())).FontSize(12).TextColor(t.TextMuted)
 			ui.Row(c).FillWidth().Gap(8).Children(func() {

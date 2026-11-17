@@ -22,6 +22,7 @@ func load(name string) *ui.SVG {
 var (
 	ChevronDown  = load("chevron-down")
 	ChevronsUp   = load("chevrons-up")
+	Crosshair    = load("crosshair")
 	Columns      = load("columns-3")
 	Database     = load("database")
 	Download     = load("download")

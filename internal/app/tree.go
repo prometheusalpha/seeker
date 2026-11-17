@@ -94,6 +94,7 @@ type Tree struct {
 	// databases and schemas open as they load, but tables never do, or a
 	// keystroke would fan out four metadata requests per table.
 	expanding   bool
+	reveal      *reveal
 	filterSeq   int
 	filterTimer *time.Timer
 }

@@ -15,7 +15,7 @@ func (s *App) filesDialog(c *ui.Context) {
 	t := c.Theme()
 	d := &s.core.DialogsState().Files
 	modal := ui.Modal(c, &d.Open, func() {
-		ui.Column(c).Width(420).Padding(20).Gap(14).Children(func() {
+		ui.Column(c).Width(420).Gap(14).Children(func() {
 			ui.Text(c, filesDialogTitle(d)).FontSize(16).Bold()
 			if d.Kind == app.FileDialogDelete {
 				ui.Text(c, fmt.Sprintf("%q goes to the Trash, with everything in it. A tab that has it open keeps its text.", filepath.Base(d.Target))).

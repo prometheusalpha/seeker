@@ -128,9 +128,12 @@ type App struct {
 	fileVer     map[string]string
 	autosave    map[string]*time.Timer
 	saveBlocked map[string]bool
-	bindings    []binding
-	dbLists     map[string][]string
-	dbLoading   map[string]bool
+	// newDir is the folder a scratch tab's Save panel opens in, chosen when
+	// the tab was made: the active file's folder.
+	newDir    map[string]string
+	bindings  []binding
+	dbLists   map[string][]string
+	dbLoading map[string]bool
 
 	bookmarks []model.Bookmark
 	jump      *jump
@@ -162,6 +165,7 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 		fileVer:     map[string]string{},
 		autosave:    map[string]*time.Timer{},
 		saveBlocked: map[string]bool{},
+		newDir:      map[string]string{},
 		dbLists:     map[string][]string{},
 		dbLoading:   map[string]bool{},
 	}

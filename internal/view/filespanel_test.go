@@ -2,9 +2,11 @@ package view
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -238,5 +240,41 @@ func TestFilesPanelClickChoosesRow(t *testing.T) {
 		if got := chosen(); got != name {
 			t.Errorf("clicked %q: chosen row is %q", name, got)
 		}
+	}
+}
+
+// The reveal button opens the folders above the file of the active tab and
+// scrolls to its row, however far down it is.
+func TestFilesPanelRevealScrolls(t *testing.T) {
+	core, p, tt, folder := filesWindow(t)
+	if err := core.SaveProfile(model.Profile{ID: "x", Name: "nowhere", DBType: model.Postgres, Host: "127.0.0.1", Port: 1, Username: "u", Database: "d", ConnectTimeoutSecs: 2}, ""); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 150; i++ {
+		name := filepath.Join(folder, "reports", fmt.Sprintf("q%03d.sql", i))
+		if err := os.WriteFile(name, []byte("select 1"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	core.AddFolder(folder)
+	p.waitUntil(t, tt, "the folder", func() bool { return tt.HasText("reports") })
+	// The panel keeps real paths, as the files it opens carry.
+	real, err := filepath.EvalSymlinks(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := filepath.Join(real, "reports", "q149.sql")
+	if err := core.OpenFile(last); err != nil {
+		t.Fatal(err)
+	}
+	p.frame(tt)
+	// The tab shows the name too, so the row is told by the count growing.
+	shown := func() int { return strings.Count(strings.Join(tt.Texts(), "\n"), "q149.sql") }
+	before := shown()
+	core.RevealActiveFile()
+	p.frame(tt)
+	p.frame(tt)
+	if shown() <= before {
+		t.Errorf("the row is not in view: %v", tt.Texts())
 	}
 }

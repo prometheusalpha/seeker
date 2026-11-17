@@ -40,7 +40,7 @@ func (s *App) connectionDialog(c *ui.Context, pal palette, d *app.ConnDialog) {
 		if pg {
 			databasePlaceholder, paramsPlaceholder, namePlaceholder = "postgres", "sslmode=verify-full&application_name=seeker", "Local Postgres"
 		}
-		ui.Column(c).Width(560).Padding(20).Gap(14).Children(func() {
+		ui.Column(c).Width(560).Gap(14).Children(func() {
 			ui.Text(c, title).FontSize(16).Bold()
 			ui.Scroll(c).FillWidth().MaxHeight(460).Children(func() {
 				ui.Column(c).FillWidth().Gap(12).Children(func() {
@@ -195,7 +195,7 @@ func (s *App) databasesDialog(c *ui.Context, pal palette, d *app.DatabasesDialog
 		// A filtered list that came up empty still has databases behind it;
 		// only an unfiltered empty list means the server listed none.
 		empty := len(items) == 0 && d.Filter == ""
-		ui.Column(c).Width(480).Padding(20).Gap(12).Children(func() {
+		ui.Column(c).Width(480).Gap(12).Children(func() {
 			ui.Text(c, "Databases").FontSize(16).Bold()
 			ui.Text(c, "Hidden databases are left out of the sidebar; open tabs keep working.").
 				FontSize(11).TextColor(t.TextMuted)

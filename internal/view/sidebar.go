@@ -25,6 +25,9 @@ func (s *App) sidebar(c *ui.Context, pal palette) {
 			if iconButton(c, icons.Plus, "New connection").Clicked() {
 				s.core.OpenConnectionDialog("")
 			}
+			if iconButton(c, icons.Crosshair, "Show the open table here").Clicked() {
+				s.core.RevealActiveTable()
+			}
 			if iconButton(c, icons.ChevronsUp, "Collapse all").Clicked() {
 				s.core.CollapseAll()
 			}
@@ -50,10 +53,25 @@ func (s *App) sidebar(c *ui.Context, pal palette) {
 		}).Grow(1).FillWidth()
 		// A click, Enter or an arrow key chooses a row; the app says what
 		// that row does, opening its tab or its children.
+		// A list builds only the rows in view, so a reveal finds its row
+		// among the flattened ones and scrolls to it by index.
+		if s.core.RevealPending() {
+			for i := 0; i < out.Rows(); i++ {
+				if s.core.TakeReveal(out.Item(i)) {
+					out.List.Choose(i)
+					out.List.ScrollTo(i, ui.Center)
+					break
+				}
+			}
+		}
+		clicked := s.rowClicked
+		s.rowClicked = nil
 		if tree.Changed() {
 			if r := *s.core.TreeRow(); r >= 0 && r < out.Rows() {
 				s.core.ActivateNode(out.Item(r))
 			}
+		} else if clicked != nil {
+			s.core.ActivateNode(*clicked)
 		}
 	})
 }
@@ -118,6 +136,12 @@ func (s *App) treeRow(c *ui.Context, out *ui.OutlineState[app.Node], n app.Node)
 			ui.Text(c, n.Message).FontSize(12).TextColor(muted).SingleLine().Tooltip(n.Message)
 		}
 	})
+	switch n.Kind {
+	case app.KindConnection, app.KindDatabase, app.KindSchema, app.KindGroup:
+		if row.RowClicked() {
+			s.rowClicked = &n
+		}
+	}
 	if hasTreeMenu(n) {
 		row.ContextMenu(func(m *ui.Menu) { s.treeMenu(c, n, m) })
 	}

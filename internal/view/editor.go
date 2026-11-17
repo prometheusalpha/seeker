@@ -1,11 +1,15 @@
 package view
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
 	"seeker/internal/app"
 	"seeker/internal/icons"
+	"seeker/internal/model"
 )
 
 // editorPane is the run bar over the active tab's editor.
@@ -115,24 +119,79 @@ func (s *App) runBar(c *ui.Context, tab app.Tab) {
 	})
 }
 
-// datasourcePicker is the menu that points the tab, and its file, at a
-// connection and database. The databases of a connection are asked for the
-// first time its submenu opens.
+// datasourcePicker is the popover that points the tab, and its file, at a
+// connection and database. A menu would grow as tall as the server's list of
+// databases, so this one scrolls and filters. The databases of a connection
+// are asked for the first time it is chosen.
 func (s *App) datasourcePicker(c *ui.Context, tab app.Tab) {
-	ui.PopoverMenuButton(c, s.datasourceLabel(tab), func(m *ui.Menu) {
-		for _, p := range s.core.Profiles() {
-			if !p.DBType.IsSQL() {
-				continue
+	t := c.Theme()
+	btn := ui.Button(c.Key("datasource"), "").Height(26).Gap(6).Tooltip("Where this runs")
+	btn.Children(func() {
+		ui.Text(c, s.datasourceLabel(tab)).SingleLine()
+		ui.Icon(c, icons.ChevronDown).FontSize(12).TextColor(t.TextMuted)
+	})
+	if btn.Clicked() {
+		s.dsOpen = !s.dsOpen
+		if s.dsOpen {
+			s.dsConn, s.dsFilter = tab.Conn, ""
+		}
+	}
+	ui.Popover(c, btn, &s.dsOpen, func() {
+		ui.Column(c).Width(280).Gap(8).Children(func() {
+			var sql []model.Profile
+			for _, p := range s.core.Profiles() {
+				if p.DBType.IsSQL() {
+					sql = append(sql, p)
+				}
 			}
-			m.Submenu(p.Name, func(sub *ui.Menu) {
-				for _, db := range s.core.Databases(p.ID) {
-					if sub.Item(db).ID(p.ID + "/" + db).Chosen() {
-						s.core.ChooseDatasource(tab.ID, p.ID, db)
-					}
+			if !slices.ContainsFunc(sql, func(p model.Profile) bool { return p.ID == s.dsConn }) && len(sql) > 0 {
+				s.dsConn = sql[0].ID
+			}
+			ui.Column(c).FillWidth().Children(func() {
+				for _, p := range sql {
+					s.datasourceRow(c, t, "ds-conn-"+p.ID, p.Name, p.ID == s.dsConn, func() { s.dsConn, s.dsFilter = p.ID, "" })
 				}
 			})
-		}
-	}).Height(26).Tooltip("Where this runs")
+			if s.dsConn == "" {
+				return
+			}
+			ui.SearchField(c.Key("ds-filter"), &s.dsFilter).Placeholder("Filter databases").Label("Filter databases").FillWidth()
+			term := strings.ToLower(strings.TrimSpace(s.dsFilter))
+			ui.Scroll(c.Key("ds-list")).FillWidth().MaxHeight(240).Children(func() {
+				ui.Column(c).FillWidth().Children(func() {
+					for _, db := range s.core.Databases(s.dsConn) {
+						if term != "" && !strings.Contains(strings.ToLower(db), term) {
+							continue
+						}
+						s.datasourceRow(c, t, "ds-db-"+db, db, s.dsConn == tab.Conn && db == tab.Database, func() {
+							s.core.ChooseDatasource(tab.ID, s.dsConn, db)
+							s.dsOpen = false
+						})
+					}
+				})
+			})
+		})
+	})
+}
+
+// datasourceRow is one choice of the picker: a connection above the list, or
+// a database in it.
+func (s *App) datasourceRow(c *ui.Context, t *ui.Theme, key, label string, chosen bool, pick func()) {
+	row := ui.ButtonBase(c.Key(key)).FillWidth().Height(26).Padding(0, 10).Radius(6).AlignItems(ui.Center)
+	text := t.Text
+	if chosen {
+		row.Background(t.Accent)
+		text = t.AccentText
+	} else if row.Hovered() {
+		row.Background(t.SurfaceHover)
+	}
+	row.Children(func() {
+		ui.Text(c, label).FontSize(12).TextColor(text).SingleLine()
+		ui.Spacer(c)
+	})
+	if row.Clicked() {
+		pick()
+	}
 }
 
 // datasourceLabel is the tab's connection and database as the picker shows

@@ -110,9 +110,9 @@ func (s *App) tableBar(c *ui.Context, tab app.Tab, tv *app.TableView) {
 // condition; Enter with none chosen applies both fields.
 func (s *App) clauseField(c *ui.Context, tab app.Tab, tv *app.TableView, kind sqltext.ClauseKind) {
 	t := c.Theme()
-	text, key, hint := &tv.WhereText, "where", "WHERE  id = 1 AND …"
+	text, key, hint := &tv.WhereText, "where", "WHERE id = 1 AND …"
 	if kind == sqltext.ClauseOrderBy {
-		text, key, hint = &tv.OrderText, "orderby", "ORDER BY  id DESC"
+		text, key, hint = &tv.OrderText, "orderby", "ORDER BY id DESC"
 	}
 	var cols []string
 	if tv.Grid != nil {
@@ -125,7 +125,7 @@ func (s *App) clauseField(c *ui.Context, tab app.Tab, tv *app.TableView, kind sq
 		d = sqltext.MySQL
 	}
 	in := s.tableFont(ui.Autocomplete(c.Key(key), text, sqltext.ClauseCompletions(kind, *text, cols, d)), 0).
-		Placeholder(hint).Height(26).Grow(1)
+		Placeholder(hint).Height(26).Padding(0, 10).Grow(1)
 	if kind == sqltext.ClauseWhere && s.focusWhere {
 		s.focusWhere = false
 		in.Focus()

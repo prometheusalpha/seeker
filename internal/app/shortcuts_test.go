@@ -125,3 +125,33 @@ func TestSnapScale(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenTableRevealsItInTheTree(t *testing.T) {
+	a := newShortcutApp(t, t.TempDir())
+	a.OpenTable("c", "db", "public", "users")
+	if !a.RevealPending() {
+		t.Fatal("opening a table did not ask the tree to show it")
+	}
+	// A reused tab is revealed too: switching back by Quick open finds it.
+	a.tree.reveal = nil
+	a.OpenTable("c", "db", "public", "users")
+	if !a.RevealPending() {
+		t.Error("a reused table tab was not revealed")
+	}
+}
+
+func TestActivatingATableTabRevealsIt(t *testing.T) {
+	a := newShortcutApp(t, t.TempDir())
+	a.OpenTable("c", "db", "public", "users")
+	a.OpenQueryTab(QueryTab{Conn: "c", Database: "db", ForceNew: true})
+	a.tree.reveal = nil
+	a.Activate(a.Tabs().Items[0].ID)
+	if !a.RevealPending() {
+		t.Error("switching to a table tab did not reveal it")
+	}
+	a.tree.reveal = nil
+	a.Activate(a.Tabs().Items[1].ID)
+	if a.RevealPending() {
+		t.Error("a query tab asked the tree to reveal a table")
+	}
+}

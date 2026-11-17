@@ -97,6 +97,8 @@ func (a *App) Activate(id string) {
 	}
 	a.tabs.Active = i
 	a.ensureTabConnected(a.tabs.Items[i])
+	// A table tab's row follows the switch; any other tab is left alone.
+	a.RevealActiveTable()
 }
 
 func (a *App) ensureTabConnected(t Tab) {
@@ -142,8 +144,11 @@ func (a *App) indexOf(id string) int {
 }
 
 // OpenTable shows a table's rows, reusing its tab when one is open: a table
-// tab is its connection, database, schema and name.
+// tab is its connection, database, schema and name. The tree then shows the
+// table's row, so a table opened from Quick open or a reused tab is found in
+// the sidebar without the Crosshair button.
 func (a *App) OpenTable(connID, database, schema, table string) {
+	defer a.RevealActiveTable()
 	if i := a.findTab(Tab{Conn: connID, Database: database, Schema: schema, Table: table, Mode: ModeTable}, ""); i >= 0 {
 		a.tabs.Active = i
 		a.ensureTabConnected(a.tabs.Items[i])

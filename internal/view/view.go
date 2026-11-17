@@ -71,6 +71,7 @@ func (s *App) View(c *ui.Context) {
 	s.settingsDialog(c)
 	s.dialogs(c, pal)
 	s.toasts(c)
+	s.quickKeys(c)
 	s.bookmarkKeys(c)
 	s.core.SyncEditors()
 	s.core.TableSync()
@@ -196,15 +197,17 @@ func (s *App) titleBar(c *ui.Context) {
 			u.HideSidebar = !u.HideSidebar
 		}
 		ui.Spacer(c)
-		// The quick open field arrives with search (M5); it shows the keys
-		// it will take but takes none until then.
-		ui.Row(c).Width(360).Height(30).Radius(15).Padding(0, 14).Gap(8).
-			Background(t.Text.Alpha(0.06)).AlignItems(ui.Center).Children(func() {
+		search := ui.ButtonBase(c.Key("quick-open")).Width(360).Height(30).Radius(15).Padding(0, 14).Gap(8).
+			Background(t.Text.Alpha(0.06)).AlignItems(ui.Center).Label("Search tables, files, connections")
+		search.Children(func() {
 			ui.Icon(c, icons.Search).FontSize(13).TextColor(t.TextMuted)
 			ui.Text(c, "Search tables, files, connections").FontSize(12).TextColor(t.TextMuted).SingleLine()
 			ui.Spacer(c)
 			ui.Text(c, "⌘P").FontSize(11).TextColor(t.TextMuted)
 		})
+		if search.Clicked() {
+			s.core.OpenQuickOpen()
+		}
 		ui.Spacer(c)
 		if iconButton(c, icons.Plus, "New connection").Clicked() {
 			s.core.OpenConnectionDialog("")

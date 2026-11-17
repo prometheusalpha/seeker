@@ -195,6 +195,11 @@ func (a *App) NewQueryTab() {
 		a.toast("Add a SQL connection first")
 		return
 	}
+	a.newQueryTab(p)
+}
+
+// newQueryTab opens an empty tab on p, in its default schema.
+func (a *App) newQueryTab(p model.Profile) {
 	schema := p.DefaultSchema
 	if p.DBType == model.MySQL {
 		schema = p.Database

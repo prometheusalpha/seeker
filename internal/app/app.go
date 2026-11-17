@@ -100,9 +100,12 @@ type App struct {
 
 	tree  Tree
 	files Files
-	tabs  Tabs
-	dlg   Dialogs
-	ui    UI
+	quick QuickOpen
+	// quickTables caches what the palette searches, per connection id.
+	quickTables map[string]*quickEntry
+	tabs        Tabs
+	dlg         Dialogs
+	ui          UI
 
 	savedUI     UI
 	savedTabs   []Tab
@@ -154,6 +157,7 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 
 		editors:     map[string]*tabEditor{},
 		cat:         newCatalog(),
+		quickTables: map[string]*quickEntry{},
 		fileVer:     map[string]string{},
 		autosave:    map[string]*time.Timer{},
 		saveBlocked: map[string]bool{},

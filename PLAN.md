@@ -326,7 +326,7 @@ Còn thiếu so với spec / ghi chú:
 - `Copy as INSERT` ghi cột theo thứ tự result, không theo thứ tự anh kéo; không có ở kết quả của query.
 - Tooltip ô chỉ có khi text rộng hơn cột; tooltip header (tên + kiểu) chưa có test.
 
-### M5: Files, Quick open, Find in files (đang làm: Files xong, còn Quick open + Find in files)
+### M5: Files, Quick open, Find in files (đang làm: Files + Quick open xong, còn Find in files)
 
 Phạm vi:
 - SqlFilesPanel: nhiều folder, filter glob, tạo / đổi tên / xoá / cut / copy / paste, mở trong Finder, binding datasource theo file. Panel kéo đổi độ rộng được (hiện đang cố định 240px).
@@ -346,7 +346,7 @@ Gotchas:
 - Đổi tên file đang mở: tab, bookmark (path), binding datasource phải đi theo.
 - Quick open fan-out nhiều connection: huỷ lượt cũ khi gõ tiếp, bỏ kết quả về muộn.
 
-Tiến độ M5 (commit `29634d4` fix race, `81e2cef` Files phần 1, `86fab9c` Files phần 2 + sửa layout/chọn dòng). **Files panel xong về code, chưa test tay trong app** (`go tool mygo dev`); **chưa làm Quick open và Find in files**.
+Tiến độ M5 (commit `29634d4` fix race, `81e2cef` Files phần 1, `86fab9c` Files phần 2 + sửa layout/chọn dòng). **Files panel xong về code, chưa test tay trong app** (`go tool mygo dev`); **Quick open xong về code; chưa làm Find in files**.
 
 Đã làm:
 - `internal/files`: `Scan` (đệ quy, depth 10, bỏ `IGNORE_DIRS`, thư mục trước), `Inside` (realpath, chặn symlink ra ngoài/vòng), `Match` (glob `*` `?` `{a,b}`, không phân biệt hoa thường). Test có symlink thoát folder, link vòng, link hỏng.
@@ -365,7 +365,7 @@ Gotchas học được (đừng lặp lại):
 
 Chưa làm / ghi chú:
 - Panel không multi-select (mỗi lần một entry); chưa có Reveal/Trash test với Finder thật; ô glob filter chưa test tay.
-- Quick open `⌘P` (bảng mọi connection fan-out, file, connection; `internal/rank` có sẵn; huỷ lượt cũ khi gõ tiếp, bỏ kết quả về muộn). Ô search ở title bar đã vẽ nhưng chưa nhận phím.
+- Quick open `⌘P` xong về code (chưa test tay): `app/quickopen.go` + `view/quickopen.go`. Ứng viên: bảng của mọi connection **đang kết nối** (PG: **mọi database** của server, mỗi database là một session riêng như sidebar, rồi mọi schema; MySQL: mọi database không bị ẩn), file dưới các folder đã mở, connection. Xếp hạng `rank.MatchFuzzy` theo tên, bảng schema hệ thống/`_` bị đẩy xuống trước (`TableDemotion`), hoà thì bảng < file < connection, tối đa 50, query rỗng không hiện gì. Danh sách bảng cache theo connection (`quickTables`) **suốt phiên chạy, không hết hạn**: đọc lần đầu (hoặc khi lần đọc trước lỗi) rồi dùng mãi, chỉ bỏ khi đổi/xoá connection (`dropConn`), nên bảng mới tạo chưa thấy cho tới lúc đó (chưa có nút làm mới); các connection chạy song song, trong một connection tối đa 16 database cùng lúc, database nào xong hiện ngay; đóng palette không huỷ lượt đọc (để dành cho lần mở sau). Lựa chọn giữ theo key khi list đổi. Enter/click: bảng → `OpenTable`, file → `ActivateFile`, connection SQL → tab query mới. Ô ở title bar bấm được. Chưa làm: tô sáng ký tự khớp (`Match.Indices` có sẵn), connection chưa kết nối thì không được tìm và palette không tự kết nối, không báo lỗi, ô tìm không nhận chuỗi `schema.table`.
 - Find in files `⌘⇧F`: cần bundle `rg 15.2.0` (pin sha256), `rg --json`, kill call cũ, `splitMask` brace glob; Enter mở file và chọn đúng chỗ (cần API chọn vùng của editor). Nên làm sau Files panel vì chạy trên các folder đã mở.
 
 ### M6: Explain viewer, phím tắt, snippets, giao diện

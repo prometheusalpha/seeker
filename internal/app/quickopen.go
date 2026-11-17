@@ -3,10 +3,13 @@ package app
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"seeker/internal/driver"
 	"seeker/internal/files"
@@ -71,16 +74,22 @@ type QuickOpen struct {
 // QuickState is the palette's state, edited in place by its field.
 func (a *App) QuickState() *QuickOpen { return &a.quick }
 
-// OpenQuickOpen shows an empty palette. The tables it searches are cached
-// per connection for as long as the app runs: a connection is listed the
-// first time it is searched, and again only after its profile changes or
-// goes, or when that listing failed.
+// OpenQuickOpen shows the palette, with every candidate listed. The tables
+// are the cache's, so a search has hits at once; a connection whose list is
+// stale or incomplete is read again behind it (see warmQuick).
 func (a *App) OpenQuickOpen() {
 	q := &a.quick
 	q.Open, q.Focus, q.Query, q.Row, q.sel, q.moved = true, true, "", 0, "", false
 	q.valid = false
 	q.others = a.quickOthers()
 	q.ver++
+	a.QuickTyped()
+}
+
+// QuickTyped is told of a keystroke in the field, and refreshes the lists
+// gone stale since the palette opened: a palette left open for a while must
+// not search a list as old as its opening.
+func (a *App) QuickTyped() {
 	for _, p := range a.profiles {
 		if p.DBType.IsSQL() && a.Status(p.ID) == Connected {
 			a.warmQuick(p)
@@ -88,9 +97,12 @@ func (a *App) OpenQuickOpen() {
 	}
 }
 
-// CloseQuickOpen hides the palette. A list being read goes on: it fills the
-// cache for the next opening.
-func (a *App) CloseQuickOpen() { a.quick.Open = false }
+// CloseQuickOpen hides the palette and clears the query. A list being read
+// goes on: it fills the cache for the next opening.
+func (a *App) CloseQuickOpen() {
+	a.quick.Open = false
+	a.quick.Query = ""
+}
 
 // QuickLoading reports a connected connection whose tables are still being
 // listed.
@@ -118,6 +130,14 @@ func (a *App) quickOthers() []QuickItem {
 					walk(n.Children)
 					continue
 				}
+				// The palette is for SQL: a file with no connection to run
+				// against, or that is not .sql, is not listed.
+				if !strings.EqualFold(filepath.Ext(n.Name), ".sql") {
+					continue
+				}
+				if _, ok := a.ResolveDatasource(n.Path); !ok {
+					continue
+				}
 				rel, err := filepath.Rel(root, n.Path)
 				if err != nil {
 					rel = n.Name
@@ -129,42 +149,78 @@ func (a *App) quickOthers() []QuickItem {
 		walk(s.nodes)
 	}
 	for _, p := range a.profiles {
-		out = append(out, QuickItem{Kind: QuickConnection, Key: "c|" + p.ID, Label: p.Name, Conn: p.ID, Detail: kindName(p.DBType)})
+		out = append(out, QuickItem{Kind: QuickConnection, Key: "c|" + p.ID, Label: p.Name, Conn: p.ID,
+			Detail: fmt.Sprintf("%s · %s:%d · %s", kindName(p.DBType), p.Host, p.Port, p.Database)})
 	}
 	return out
 }
 
-// quickParallel bounds the databases of one connection listed at once.
-const quickParallel = 16
+// quickParallel bounds the databases of one connection listed at once:
+// load, not coverage, since every database is still chased. On Postgres
+// each one the session is not in opens a session of its own.
+const quickParallel = 10
 
-// quickEntry is one connection's tables as the palette searches them; warm
-// once a listing has finished. Items arrive database by database, so a
-// search during the first listing already finds what has landed.
+const (
+	// quickTTL is how long a complete list is trusted before it is read
+	// again behind the cache. A table made five minutes ago is found.
+	quickTTL = 5 * time.Minute
+	// quickRetry is how soon a list that could not be read whole is tried
+	// again, so a schema that is never readable is not asked for on every
+	// keystroke.
+	quickRetry = 30 * time.Second
+)
+
+// quickEntry is one connection's tables as the palette searches them. Items
+// arrive database by database, so a search during the first listing already
+// finds what has landed. A listing behind a warm one lands in next and
+// replaces items when it is done, so the palette never shrinks while it
+// refreshes, and a server that cannot be reached keeps its old rows.
 type quickEntry struct {
-	items   []QuickItem
-	loading bool
-	warm    bool
+	items, next []QuickItem
+	loading     bool
+	warm        bool // some listing has delivered
+	complete    bool // the last one reached every database and schema
+	at          time.Time
 }
 
-// warmQuick lists the tables of p unless that was done or is on its way.
-// It runs off the window's thread; every write to the entry happens on it.
+func (e *quickEntry) stale() bool {
+	if !e.warm {
+		return true
+	}
+	if e.complete {
+		return time.Since(e.at) >= quickTTL
+	}
+	return time.Since(e.at) >= quickRetry
+}
+
+// warmQuick reads the tables of p behind the cache, when its list is stale
+// and no listing is on its way. It runs when the palette opens, as the
+// user types, and as soon as a connection connects, so the first search has
+// rows. Every write to the entry happens on the window's thread.
 func (a *App) warmQuick(p model.Profile) {
 	e := a.quickTables[p.ID]
 	if e == nil {
 		e = &quickEntry{}
 		a.quickTables[p.ID] = e
 	}
-	if e.loading || e.warm {
+	if e.loading || !e.stale() {
 		return
 	}
-	e.loading, e.items = true, nil
+	e.loading, e.next = true, nil
+	if !e.warm {
+		e.items = nil
+	}
 	go func() {
-		ok := a.listQuickTables(a.ctx, p, func(hits []QuickItem) {
+		some, all := a.listQuickTables(a.ctx, p, func(hits []QuickItem) {
 			a.upd(func() {
 				if a.quickTables[p.ID] != e {
 					return
 				}
-				e.items = append(e.items, hits...)
+				if e.warm {
+					e.next = append(e.next, hits...)
+				} else {
+					e.items = append(e.items, hits...)
+				}
 				a.quick.ver++
 			})
 		})
@@ -172,10 +228,27 @@ func (a *App) warmQuick(p model.Profile) {
 			if a.quickTables[p.ID] != e {
 				return
 			}
-			e.loading, e.warm = false, ok
+			e.loading, e.complete, e.at = false, all, time.Now()
+			if some {
+				if e.warm {
+					e.items = e.next
+				}
+				e.warm = true
+			}
+			e.next = nil
 			a.quick.ver++
 		})
 	}()
+}
+
+// refreshQuick forgets what the palette knew of a connection and reads it
+// again if it is connected: the databases it may show have changed.
+func (a *App) refreshQuick(id string) {
+	delete(a.quickTables, id)
+	a.quick.ver++
+	if p, ok := a.Profile(id); ok && p.DBType.IsSQL() && a.Status(id) == Connected {
+		a.warmQuick(p)
+	}
 }
 
 // quickTablesOf is the cached tables of the connections that are connected.
@@ -190,13 +263,14 @@ func (a *App) quickTablesOf() []QuickItem {
 }
 
 // listQuickTables hands found the tables of each database of the
-// connection, a few databases at a time, and reports whether any could be
-// listed. On Postgres every database is a session of its own, as the
-// sidebar treats it: each is opened for its schemas and their tables, and
-// all of them are searched, not only the profile's. On MySQL a database is
-// a schema. What cannot be listed, a database the user may not enter, is
-// left out so it does not blank the rest.
-func (a *App) listQuickTables(ctx context.Context, p model.Profile, found func([]QuickItem)) bool {
+// connection, a few at a time, and reports whether any database could be
+// listed and whether all of them could. The profile's own database goes
+// first, then the rest as the server names them (minus the ones the user
+// hid). On Postgres every database is a session of its own, as the sidebar
+// treats it, and all are searched, not only the profile's. On MySQL a
+// database is a schema. What cannot be listed, a database the user may not
+// enter, is left out so it does not blank the rest.
+func (a *App) listQuickTables(ctx context.Context, p model.Profile, found func([]QuickItem)) (some, all bool) {
 	home := p.Database
 	if home == "" {
 		if info, ok := a.ServerInfo(p.ID); ok {
@@ -204,7 +278,8 @@ func (a *App) listQuickTables(ctx context.Context, p model.Profile, found func([
 		}
 	}
 	dbs := []string{home}
-	_ = a.pl.Catalog(ctx, p.ID, home, func(ctx context.Context, conn driver.Conn) error {
+	all = true
+	if a.pl.Catalog(ctx, p.ID, home, func(ctx context.Context, conn driver.Conn) error {
 		infos, err := conn.ListDatabases(ctx, "")
 		if err != nil {
 			return err
@@ -214,10 +289,16 @@ func (a *App) listQuickTables(ctx context.Context, p model.Profile, found func([
 			dbs = append(dbs, n.DB)
 		}
 		return nil
-	})
+	}) != nil {
+		all = false
+	}
+	if i := slices.Index(dbs, home); i > 0 {
+		dbs[0], dbs[i] = dbs[i], dbs[0]
+	}
 	var (
 		wg     sync.WaitGroup
-		listed atomic.Bool
+		listed atomic.Int32
+		failed atomic.Int32
 		sem    = make(chan struct{}, quickParallel)
 	)
 	for _, db := range dbs {
@@ -225,28 +306,40 @@ func (a *App) listQuickTables(ctx context.Context, p model.Profile, found func([
 		sem <- struct{}{}
 		go func() {
 			defer func() { <-sem; wg.Done() }()
-			if hits, ok := a.listQuickDatabase(ctx, p, db); ok {
-				listed.Store(true)
+			hits, ok, whole := a.listQuickDatabase(ctx, p, db)
+			if !whole {
+				failed.Add(1)
+			}
+			if ok {
+				listed.Add(1)
 				found(hits)
 			}
 		}()
 	}
 	wg.Wait()
-	return listed.Load()
+	return listed.Load() > 0, all && failed.Load() == 0
 }
 
-// listQuickDatabase is the tables of one database; ok is false when its
-// schemas could not be listed at all.
-func (a *App) listQuickDatabase(ctx context.Context, p model.Profile, db string) (hits []QuickItem, ok bool) {
+// listQuickDatabase is the tables of one database, a schema's at a time on
+// Postgres. ok is false when nothing could be listed; whole when every
+// schema was. The profile's own schema goes first. When the schemas cannot
+// be read (a role that may not read information_schema) the default schema
+// is tried alone: a schema that does not exist lists nothing, with no error.
+func (a *App) listQuickDatabase(ctx context.Context, p model.Profile, db string) (hits []QuickItem, ok, whole bool) {
 	schemas := []string{db}
+	whole = true
 	if p.DBType == model.Postgres {
+		own := cmp.Or(p.DefaultSchema, "public")
 		schemas = nil
 		if a.pl.Catalog(ctx, p.ID, db, func(ctx context.Context, conn driver.Conn) error {
 			var e error
 			schemas, e = conn.ListSchemas(ctx, p.ShowSystemSchemas)
 			return e
-		}) != nil {
-			return nil, false
+		}) != nil || len(schemas) == 0 {
+			schemas, whole = []string{own}, false
+		}
+		if i := slices.Index(schemas, own); i > 0 {
+			schemas[0], schemas[i] = schemas[i], schemas[0]
 		}
 	}
 	for _, schema := range schemas {
@@ -256,26 +349,26 @@ func (a *App) listQuickDatabase(ctx context.Context, p model.Profile, db string)
 			tables, e = conn.ListTables(ctx, schema, "")
 			return e
 		}) != nil {
+			whole = false
 			continue
 		}
-		where := schema
-		if p.DBType == model.Postgres {
-			where = db + "." + schema
-		}
+		ok = true
 		for _, t := range tables {
 			hits = append(hits, QuickItem{Kind: QuickTable, Key: "t|" + p.ID + "|" + db + "|" + schema + "|" + t.Name,
-				Label: t.Name, Detail: p.Name + " · " + where, Type: t.Type,
+				Label: t.Name, Detail: p.Name + " / " + db + " / " + schema, Type: t.Type,
 				Conn: p.ID, DB: db, Schema: schema, Table: t.Name, demotion: rank.TableDemotion(schema, t.Name)})
 		}
 	}
-	return hits, true
+	return hits, ok, whole
 }
 
 // QuickResults ranks the candidates against the query: a table of a system
 // schema sinks below the user's own however well it matches, then the
 // better match first, the shorter name inside a tier. The choice stays on
 // the same hit when the list changes, and falls to the first when that hit
-// is gone. An empty query lists nothing.
+// is gone. An empty query lists everything, tables first, then files, then
+// connections, each by demotion and name: opening the palette is never a
+// dead end.
 func (a *App) QuickResults() []QuickItem {
 	q := &a.quick
 	if q.valid && q.shown == q.Query && q.shownV == q.ver {
@@ -286,7 +379,13 @@ func (a *App) QuickResults() []QuickItem {
 	}
 	q.shown, q.shownV, q.valid = q.Query, q.ver, true
 	q.results = q.results[:0:0]
-	if q.Query != "" {
+	if q.Query == "" {
+		all := append(a.quickTablesOf(), q.others...)
+		slices.SortFunc(all, func(x, y QuickItem) int {
+			return cmp.Or(cmp.Compare(x.Kind, y.Kind), cmp.Compare(x.demotion, y.demotion), cmp.Compare(x.Label, y.Label), cmp.Compare(x.Key, y.Key))
+		})
+		q.results = append(q.results, all[:min(len(all), quickLimit)]...)
+	} else {
 		type scored struct {
 			QuickItem
 			score int

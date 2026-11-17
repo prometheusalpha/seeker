@@ -173,6 +173,11 @@ func (a *App) finishConnect(p model.Profile, c *connState, done chan struct{}, c
 	}
 	delete(a.tree.errs, Node{Kind: KindConnection, Conn: p.ID})
 	a.pl.Adopt(p, password, conn)
+	// The palette's tables are read as soon as there is a session, so its
+	// first search has rows.
+	if p.DBType.IsSQL() {
+		a.warmQuick(p)
+	}
 }
 
 // CancelConnect stops the attempt in flight. The session it may have just

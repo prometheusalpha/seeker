@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"seeker/internal/model"
 	"seeker/internal/rank"
@@ -50,10 +51,12 @@ func TestQuickResultsOrder(t *testing.T) {
 		t.Errorf("the system table is not last: %v", a.QuickResults())
 	}
 
+	// An empty query lists everything, the user's tables before the system's.
 	q.Query = ""
 	q.ver++
-	if n := len(a.QuickResults()); n != 0 {
-		t.Errorf("an empty query listed %d hits", n)
+	res := a.QuickResults()
+	if len(res) != 5 || res[len(res)-1].Schema != "pg_catalog" {
+		t.Errorf("an empty query listed %v", quickLabels(res))
 	}
 }
 
@@ -153,31 +156,69 @@ func cachedTables(a *App, conn string, items ...QuickItem) *quickEntry {
 	return e
 }
 
-// A list read once is used for good, with nothing read again; one whose
-// read failed is read again at the next opening.
+// A list younger than the TTL is used as it is; an older one is searched at
+// once and read again behind it; a read that fails leaves the old list and
+// is tried again only after the retry wait.
 func TestQuickCache(t *testing.T) {
 	a := newTestApp(t)
 	run := drained(t, a)
 	e := cachedTables(a, "c", quickTable("c", "public", "orders"))
+	e.complete, e.at = true, time.Now()
 
 	a.OpenQuickOpen()
-	a.OpenQuickOpen()
+	a.QuickTyped()
 	if a.QuickLoading() {
-		t.Fatal("a list read already was read again")
+		t.Fatal("a fresh list was read again")
+	}
+
+	e.at = time.Now().Add(-2 * quickTTL)
+	a.OpenQuickOpen()
+	if !a.QuickLoading() {
+		t.Fatal("a stale list was not read again")
 	}
 	a.quick.Query = "orders"
 	if len(a.QuickResults()) != 1 {
-		t.Fatalf("hits: %v", a.QuickResults())
+		t.Fatalf("the cache was not used meanwhile: %v", a.QuickResults())
+	}
+	run() // the read fails: nothing listens on the port
+	if a.QuickLoading() || len(e.items) != 1 || !e.warm {
+		t.Errorf("loading %v, items %d, warm %v", a.QuickLoading(), len(e.items), e.warm)
+	}
+	if e.complete {
+		t.Error("a read that reached nothing was called complete")
+	}
+	a.QuickTyped()
+	if a.QuickLoading() {
+		t.Error("a failed read was tried again at once")
+	}
+	e.at = time.Now().Add(-2 * quickRetry)
+	a.QuickTyped()
+	if !a.QuickLoading() {
+		t.Error("a failed read was never tried again")
 	}
 
-	e.warm = false // the read failed
-	a.OpenQuickOpen()
-	if !a.QuickLoading() {
-		t.Fatal("a failed read was not tried again")
+	// What a read being made brings in does not show until it is whole.
+	e.next = append(e.next, quickTable("c", "public", "orders_v2"))
+	a.quick.ver++
+	if got := quickLabels(a.QuickResults()); len(got) != 1 || got[0] != "orders" {
+		t.Errorf("a half-read list showed: %v", got)
 	}
-	run() // fails again: nothing listens on the port
-	if a.QuickLoading() || e.warm {
-		t.Errorf("loading %v, warm %v", a.QuickLoading(), e.warm)
+}
+
+// The user's tables come first, then files, then connections; hiding a
+// database forgets what was listed.
+func TestQuickBlankOrderAndRefresh(t *testing.T) {
+	a, run, root := fileWorld(t)
+	_, _ = run, root
+	cachedTables(a, "z", quickTable("z", "public", "zebra"))
+	a.OpenQuickOpen()
+	res := a.QuickResults()
+	if len(res) < 3 || res[0].Kind != QuickTable || res[1].Kind != QuickFile || res[len(res)-1].Kind != QuickConnection {
+		t.Fatalf("order: %+v", res)
+	}
+	a.refreshQuick("z")
+	if e := a.quickTables["z"]; e != nil && e.warm {
+		t.Errorf("the cache survived: %+v", e)
 	}
 }
 

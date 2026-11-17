@@ -38,7 +38,7 @@ func TestQuickOpenByKeyboard(t *testing.T) {
 
 	tt.Key(ui.Cmd, ui.KeyP)
 	p.frame(tt)
-	if !core.QuickState().Open || !tt.HasText("Type to find a table, a file or a connection.") {
+	if !core.QuickState().Open || !tt.HasText("users.sql") || !tt.HasText("nowhere") {
 		t.Fatalf("not open: %v", tt.Texts())
 	}
 	tt.Type("sql")

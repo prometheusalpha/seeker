@@ -384,6 +384,7 @@ func (a *App) SetHiddenDatabases(id string, hidden []string) error {
 		return err
 	}
 	a.dropConn(id)
+	a.refreshQuick(id)
 	a.bump()
 	return nil
 }

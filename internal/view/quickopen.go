@@ -28,6 +28,9 @@ func (s *App) quickOpen(c *ui.Context) {
 				q.Focus = false
 				in.Focus()
 			}
+			if in.Changed() {
+				s.core.QuickTyped()
+			}
 			if in.Submitted() {
 				s.core.QuickActivate()
 			}
@@ -41,10 +44,10 @@ func (s *App) quickOpen(c *ui.Context) {
 			res := s.core.QuickResults()
 			loading := s.core.QuickLoading()
 			switch {
-			case q.Query == "":
-				quickNote(c, "Type to find a table, a file or a connection.")
 			case len(res) == 0 && loading:
 				quickNote(c, "Looking through the tables…")
+			case len(res) == 0 && q.Query == "":
+				quickNote(c, "No tables, SQL files or connections yet.")
 			case len(res) == 0:
 				quickNote(c, "Nothing matches.")
 			default:

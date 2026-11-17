@@ -89,9 +89,15 @@ type Toast struct {
 
 type App struct {
 	ctx context.Context
-	db  *store.Store
-	pl  *pool.Pool
-	upd Update
+	// chords are the shortcuts the user changed; recording pauses them all
+	// while the settings take a new one.
+	chords    map[Command]Chord
+	recording bool
+	// chordsChanged rebuilds the native menu, which holds some chords.
+	chordsChanged func()
+	db            *store.Store
+	pl            *pool.Pool
+	upd           Update
 
 	profiles []model.Profile
 	conns    map[string]*connState
@@ -223,6 +229,7 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 			a.files.Out.Open.Add(f)
 		}
 	}
+	a.loadShortcuts()
 	a.loadBookmarks()
 	a.savedUI = a.ui
 	a.snapshotTabs()

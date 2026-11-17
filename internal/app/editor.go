@@ -252,17 +252,17 @@ func (te *tabEditor) onInput(ev ui.InputEvent) bool {
 			te.a.RunSmart(te.id)
 		}
 		return true
-	case ev.Mods == ui.Alt|ui.Shift && key == ui.KeyF:
+	case te.a.ShortcutIs(EditorFormat, ev.Mods, key):
 		if !ev.Repeat {
 			te.a.Format(te.id)
 		}
 		return true
-	case ev.Mods == ui.Alt|ui.Shift && key == ui.KeyE:
+	case te.a.ShortcutIs(EditorExplain, ev.Mods, key):
 		if !ev.Repeat {
 			te.a.ExplainSmart(te.id)
 		}
 		return true
-	case ev.Mods == ui.Cmd && key == ui.KeyS:
+	case te.a.ShortcutIs(EditorSave, ev.Mods, key):
 		if !ev.Repeat {
 			te.a.SaveTab(te.id)
 		}

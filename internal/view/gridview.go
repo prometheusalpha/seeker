@@ -124,6 +124,10 @@ func (s *App) gridCell(c *ui.Context, g *app.ResultGrid, row, col int) {
 			color = t.AccentText.Alpha(0.6)
 		}
 		el = s.tableFont(ui.Text(c, "NULL"), 0).TextColor(color).SingleLine()
+	} else if on, ok := boolValue(value); ok && grid.ResolveKind(g.Columns[rc].Type) == grid.KindBoolean {
+		// A look, not a control: a click selects the cell as on any other,
+		// and the value changes through the cell's editor.
+		el = ui.Checkbox(c.Key("bool"), &on, "").Disabled(true).DimDisabled(false)
 	} else {
 		text := g.Text(row, rc)
 		color := kindColor(t, g.Columns[rc].Type)
@@ -138,6 +142,23 @@ func (s *App) gridCell(c *ui.Context, g *app.ResultGrid, row, col int) {
 	if g.Edited(row, rc) {
 		el.Background(t.Warning.Alpha(0.25))
 	}
+}
+
+// boolValue reads a boolean cell: a bool, or the text a driver or an edit
+// leaves, as Postgres' t and f. Anything else is not one, and shows as text.
+func boolValue(v any) (on, ok bool) {
+	switch v := v.(type) {
+	case bool:
+		return v, true
+	case string:
+		switch strings.ToLower(v) {
+		case "t", "true":
+			return true, true
+		case "f", "false":
+			return false, true
+		}
+	}
+	return false, false
 }
 
 // cut reports a text that does not fit its column, so it shows ellipsised.
@@ -219,7 +240,7 @@ func (s *App) gridKeys(c *ui.Context, g *app.ResultGrid, gc gridCtx, table ui.El
 	if !table.FocusWithin() || g.Editing != nil {
 		return
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyC) {
+	if s.pressed(c, app.ResultCopy) {
 		s.copySelection(c, g)
 	}
 	if gc.tv == nil {
@@ -229,10 +250,10 @@ func (s *App) gridKeys(c *ui.Context, g *app.ResultGrid, gc gridCtx, table ui.El
 	if !ok {
 		return
 	}
-	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyUp) {
+	if s.pressed(c, app.SortAsc) {
 		s.core.SortTable(gc.tabID, rc, false)
 	}
-	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyDown) {
+	if s.pressed(c, app.SortDesc) {
 		s.core.SortTable(gc.tabID, rc, true)
 	}
 }
@@ -282,10 +303,10 @@ func (s *App) sortItems(m *ui.Menu, gc gridCtx, rc int) {
 	if gc.tv == nil {
 		return
 	}
-	if m.Item("Sort ascending").ID("asc").Shortcut(ui.Ctrl|ui.Shift, ui.KeyUp).Chosen() {
+	if s.menuShortcut(m.Item("Sort ascending").ID("asc"), app.SortAsc).Chosen() {
 		s.core.SortTable(gc.tabID, rc, false)
 	}
-	if m.Item("Sort descending").ID("desc").Shortcut(ui.Ctrl|ui.Shift, ui.KeyDown).Chosen() {
+	if s.menuShortcut(m.Item("Sort descending").ID("desc"), app.SortDesc).Chosen() {
 		s.core.SortTable(gc.tabID, rc, true)
 	}
 	if gc.tv.OrderBy != "" && m.Item("Clear sort").ID("clear").Chosen() {
@@ -296,7 +317,7 @@ func (s *App) sortItems(m *ui.Menu, gc gridCtx, rc int) {
 // cellMenu is the context menu of a cell or a row number: copy the block,
 // copy rows as INSERT and edit (a table's), sort by the column, export.
 func (s *App) cellMenu(c *ui.Context, m *ui.Menu, g *app.ResultGrid, gc gridCtx, row, rc int) {
-	if m.Item("Copy").ID("copy").Shortcut(ui.Cmd, ui.KeyC).Disabled(len(g.SelectedRows()) == 0).Chosen() {
+	if s.menuShortcut(m.Item("Copy").ID("copy"), app.ResultCopy).Disabled(len(g.SelectedRows()) == 0).Chosen() {
 		s.copySelection(c, g)
 	}
 	if g.CanInsert() {
@@ -359,11 +380,16 @@ func (s *App) columnsButton(c *ui.Context, g *app.ResultGrid) {
 	}).Height(26).Tooltip("Show or hide columns")
 }
 
-// sumText is the total of the cells chosen, as the status bar shows it.
-func sumText(r grid.CellSumResult) string {
-	if r.Count == 0 {
-		return ""
+// selectionTexts are the status bar's two readings of the cells chosen:
+// how many, and their total. Each is empty when there is nothing to say.
+func selectionTexts(g *app.ResultGrid) (cells, sum string) {
+	n := len(g.SelectedRows()) * len(g.SelectedCols())
+	if n == 0 {
+		return "", ""
 	}
-	sum := strconv.FormatFloat(math.Round(r.Sum*1e6)/1e6, 'f', -1, 64)
-	return fmt.Sprintf("Sum %s · %d cells", sum, r.Count)
+	cells = fmt.Sprintf("%d cells selected", n)
+	if r := g.Sum(); r.Count > 0 {
+		sum = "Sum " + strconv.FormatFloat(math.Round(r.Sum*1e6)/1e6, 'f', -1, 64)
+	}
+	return cells, sum
 }

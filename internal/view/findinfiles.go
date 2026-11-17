@@ -7,13 +7,14 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"seeker/internal/app"
 	"seeker/internal/files"
 	"seeker/internal/icons"
 )
 
-// findKeys opens the window on ⌘⇧F, from anywhere in the window.
+// findKeys opens the window on its shortcut, from anywhere in the window.
 func (s *App) findKeys(c *ui.Context) {
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyF) {
+	if s.pressed(c, app.FindInFilesKey) {
 		s.core.OpenFind()
 	}
 }

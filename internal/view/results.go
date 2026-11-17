@@ -165,26 +165,74 @@ func round(d time.Duration) string {
 	return fmt.Sprintf("%.2f s", d.Seconds())
 }
 
-// statusBar is the line under the grid: the rows and the time on the left,
-// the sum of the cells chosen and the edits waiting on the right.
+// statusBar is the line under the grid: the rows and the time on the left;
+// on the right the cells chosen and their sum, the edits waiting, and a
+// table's paging.
 func (s *App) statusBar(c *ui.Context, show bool, text string, g *app.ResultGrid, tab *app.Tab) {
 	if !show {
 		return
 	}
 	t := c.Theme()
 	ui.Divider(c)
-	ui.Row(c).Height(26).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(12).Children(func() {
+	ui.Row(c).Height(30).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(12).Children(func() {
 		ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		ui.Spacer(c)
 		if g != nil {
-			if sum := sumText(g.Sum()); sum != "" {
+			cells, sum := selectionTexts(g)
+			if cells != "" {
+				ui.Text(c, cells).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			}
+			if sum != "" {
 				ui.Text(c, sum).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			}
 			if tab != nil {
 				s.editControls(c, g, tab.ID)
 			}
 		}
+		if tab != nil {
+			if tv := s.core.TableOf(tab.ID); tv != nil {
+				s.paging(c, *tab, tv)
+			}
+		}
 	})
+}
+
+// paging is a table's page controls. The page is a field: Enter goes to
+// the page typed, however far; a page past the last is an empty one, as the
+// total is not known until Count.
+func (s *App) paging(c *ui.Context, tab app.Tab, tv *app.TableView) {
+	if s.pageText == nil {
+		s.pageText = map[string]string{}
+	}
+	if ui.Button(c.Key("prev"), "‹").Height(22).Disabled(tv.Page <= 1 || tv.Loading).Tooltip("Previous page").Clicked() {
+		s.core.SetTablePage(tab.ID, tv.Page-1)
+	}
+	text, typing := s.pageText[tab.ID]
+	if !typing {
+		text = strconv.Itoa(tv.Page)
+	}
+	in := ui.TextInput(c.Key("page"), &text).Width(48).Height(22).Padding(0, 4).TextAlign(ui.Center).Tooltip("Page: Enter to go")
+	if in.Focused() {
+		s.pageText[tab.ID] = text
+	} else {
+		delete(s.pageText, tab.ID)
+	}
+	if in.Submitted() {
+		if n, err := strconv.Atoi(strings.TrimSpace(text)); err == nil && n >= 1 {
+			s.core.SetTablePage(tab.ID, n)
+		}
+		delete(s.pageText, tab.ID)
+	}
+	if ui.Button(c.Key("next"), "›").Height(22).Disabled(!tv.HasNextPage() || tv.Loading).Tooltip("Next page").Clicked() {
+		s.core.SetTablePage(tab.ID, tv.Page+1)
+	}
+	ui.PopoverMenuButton(c.Key("pagesize"), strconv.Itoa(tv.PageSize)+" rows", func(m *ui.Menu) {
+		for _, n := range app.PageSizes {
+			if m.Item(strconv.Itoa(n)).ID(strconv.Itoa(n)).Radio(n == tv.PageSize).Chosen() {
+				s.core.SetTablePageSize(tab.ID, n)
+			}
+		}
+	}).Height(22).Tooltip("Rows per page")
 }
 
 // editControls commit or drop the edits staged on a table's grid.
@@ -192,7 +240,7 @@ func (s *App) editControls(c *ui.Context, g *app.ResultGrid, tabID string) {
 	if n := g.Pending(); n > 0 {
 		busy := s.core.TableOf(tabID).Committing()
 		ui.Text(c, fmt.Sprintf("%d edits", n)).FontSize(11).TextColor(c.Theme().Warning).SingleLine()
-		if ui.Button(c.Key("commit"), "Save").Height(20).Disabled(busy).Tooltip("Write the edits (⌘S)").Clicked() {
+		if ui.Button(c.Key("commit"), "Save").Height(20).Disabled(busy).Tooltip("Write the edits (" + s.chordText(app.EditorSave) + ")").Clicked() {
 			s.core.CommitEdits(tabID)
 		}
 		if ui.Button(c.Key("discard"), "Discard").Height(20).Disabled(busy).Clicked() {
@@ -236,7 +284,7 @@ func (s *App) planPane(c *ui.Context, r *app.RunView) {
 			s.tableFont(ui.Text(c, raw), -1).Selectable()
 		}
 	default:
-		s.resultsNote(c, "Explain the statement under the caret (⌥⇧E).")
+		s.resultsNote(c, "Explain the statement under the caret ("+s.chordText(app.EditorExplain)+").")
 		return
 	}
 	ui.Scroll(c).Grow(1).FillWidth().Children(func() {

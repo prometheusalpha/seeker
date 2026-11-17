@@ -382,6 +382,11 @@ Gotchas:
 - Canvas: `Painter.Transform` để pan/zoom, nhưng hit-test phải tự đổi toạ độ con trỏ qua nghịch đảo transform. Pinch trên Windows đến dưới dạng Ctrl+scroll.
 - MySQL: UPDATE/DELETE với `FORMAT=JSON` chỉ ra `<not executable by iterator executor>`; muốn đủ phải fallback `EXPLAIN` dạng bảng như dbx (recall chưa làm). Parser giữ cả nhánh `query_plan` và `query_block` (server cũ).
 
+Kết quả phần phím tắt (2026-11-17; **chưa test tay trong app**):
+- `app/shortcuts.go`: bảng lệnh (id của recall + `tab.reopen` ⌘⇧T, `editor.save` ⌘S, `result.copy` ⌘C cho đổi được), override lưu ở settings `shortcuts` (key theo tên, entry hỏng rơi về default). Một chord chỉ thuộc một lệnh: lệnh đang giữ nó bị **unbind** kèm toast (recall trả về default, có thể lại trùng).
+- View đọc chord qua `s.pressed(c, cmd)`, editor qua `ShortcutIs`; tooltip/menu in chord hiện tại. Settings chia sidebar trái (Appearance | Shortcuts): bấm chord → "Press keys…", Esc huỷ, Backspace unbind, mọi chord tạm dừng khi đang ghi.
+- Chưa có: `⌘↵` (Run) và bookmark chưa đổi được; ⌃Tab/⌃⇧Tab đã nối (trước đó chỉ có ⌘⌥←/→). Explain viewer, Snippets, Giao diện (font/scale) vẫn chưa làm.
+
 ### M7: Redis
 
 Phạm vi: profile Redis (default db), key list (SCAN theo trang, kèm TYPE + TTL), xem/sửa string và hash (đổi tên field, only-if-absent), TTL, xoá key, new key, console (đọc tự do, ghi phải xác nhận).

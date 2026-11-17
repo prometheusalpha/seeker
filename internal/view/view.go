@@ -31,7 +31,11 @@ type App struct {
 
 	appearance   int
 	settingsOpen bool
-	systemDark   bool
+	// settingsSection is the sidebar's choice; recordID the command whose
+	// chord is waiting for a key, "" when none.
+	settingsSection string
+	recordID        app.Command
+	systemDark      bool
 
 	// refocusGrid hands the keyboard back to the grid after a cell editor
 	// closes; focusWhere moves it to the WHERE field (⌘L).
@@ -48,6 +52,8 @@ type App struct {
 	// tableFontKey is the table font the grid's character advance was last
 	// measured for.
 	tableFontKey string
+	// pageText is what a table's page field holds while it is being typed in.
+	pageText map[string]string
 }
 
 func New(core *app.App) *App {
@@ -76,6 +82,9 @@ func (s *App) View(c *ui.Context) {
 			s.body(c, pal)
 		})
 	})
+	if s.pressed(c, app.SettingsOpen) {
+		s.settingsOpen = true
+	}
 	s.settingsDialog(c)
 	s.dialogs(c, pal)
 	s.toasts(c)
@@ -212,7 +221,7 @@ func (s *App) titleBar(c *ui.Context) {
 			ui.Icon(c, icons.Search).FontSize(13).TextColor(t.TextMuted)
 			ui.Text(c, "Search tables, files, connections").FontSize(12).TextColor(t.TextMuted).SingleLine()
 			ui.Spacer(c)
-			ui.Text(c, "⌘P").FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, s.chordText(app.QuickOpenKey)).FontSize(11).TextColor(t.TextMuted)
 		})
 		if search.Clicked() {
 			s.core.OpenQuickOpen()
@@ -231,7 +240,7 @@ func (s *App) titleBar(c *ui.Context) {
 				s.appearance = 2
 			}
 		}
-		if iconButton(c, icons.Settings, "Settings").Clicked() {
+		if iconButton(c, icons.Settings, "Settings ("+s.chordText(app.SettingsOpen)+")").Clicked() {
 			s.settingsOpen = true
 		}
 	})

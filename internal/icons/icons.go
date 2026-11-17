@@ -39,6 +39,8 @@ var (
 	Play         = load("play")
 	Plus         = load("plus")
 	Refresh      = load("refresh-cw")
+	Keyboard     = load("keyboard")
+	Palette      = load("palette")
 	Search       = load("search")
 	Settings     = load("settings")
 	Square       = load("square")

@@ -20,11 +20,6 @@ func main() {
 			log.Fatal(err)
 		}
 		a := view.New(core)
-		mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
-			{Role: mygo.RoleAppMenu},
-			{Role: mygo.RoleEditMenu},
-			{Role: mygo.RoleWindowMenu},
-		}))
 		w := mygo.NewWindow(mygo.WindowOptions{
 			Title:         "Seeker",
 			Width:         1280,
@@ -35,12 +30,35 @@ func main() {
 			TitleBarStyle: mygo.TitleBarHidden,
 			Content:       ui.View(a.View),
 		})
+		mygo.App.SetMenu(appMenu(core, a, w))
+		core.OnShortcutsChange(func() { mygo.App.SetMenu(appMenu(core, a, w)) })
 		core.Attach(w.Update)
 		w.OnClosed(core.Close)
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// appMenu is the menu bar. Its Go menu holds the alt chords of stepping through
+// the tabs (⌃Tab, ⌃⇧Tab; the main ones, ⌘⌥←/→, reach the window): on macOS a
+// key such as ⌃Tab reaches the app only as a menu's key equivalent, so the
+// menu is built again
+// as one is rebound (or held back while the settings wait for a key).
+func appMenu(core *app.App, a *view.App, w *mygo.Window) *mygo.Menu {
+	step := func(id app.Command, label string, delta int) *mygo.MenuItem {
+		return &mygo.MenuItem{Label: label, Accelerator: core.Accelerator(id),
+			Click: func(*mygo.MenuItem, *mygo.Window) { w.Update(func() { a.StepTab(delta) }) }}
+	}
+	return mygo.NewMenu([]*mygo.MenuItem{
+		{Role: mygo.RoleAppMenu},
+		{Role: mygo.RoleEditMenu},
+		{Label: "Go", Submenu: []*mygo.MenuItem{
+			step(app.TabNextAlt, "Show Next Tab", 1),
+			step(app.TabPrevAlt, "Show Previous Tab", -1),
+		}},
+		{Role: mygo.RoleWindowMenu},
+	})
 }
 
 // openApp opens the app's database in the user data folder and imports

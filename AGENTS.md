@@ -1,1 +1,2 @@
 - Tham khảo ../recall khi có những thứ cần đưa ra nghiệp vụ hoặc kỹ thuật 
+- - `ui.TextInput` có padding dọc mặc định: ép `.Height(n)` nhỏ hơn mặc định mà không đặt `.Padding(0, x)` thì chữ bị đẩy lệch xuống dưới. Input thấp (vd ô số trang ở status bar) luôn kèm `.Padding(0, x)`, như `clauseField` (`Height(26).Padding(0, 10)`).

@@ -193,22 +193,22 @@ func (s *App) renameTab(ren *renameState) {
 // tabKeys registers the strip's shortcuts: closing and reopening tabs, and
 // stepping through the visible order, wrapping at its ends.
 func (s *App) tabKeys(c *ui.Context) {
-	if c.Shortcut(ui.Cmd, ui.KeyW) {
+	if s.pressed(c, app.TabClose) {
 		s.closeActiveTab()
 	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyW) {
+	if s.pressed(c, app.TabCloseOthers) {
 		s.closeOtherTabs()
 	}
-	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyW) {
+	if s.pressed(c, app.TabCloseAll) {
 		s.core.CloseAllTabs()
 	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyT) {
+	if s.pressed(c, app.TabReopen) {
 		s.core.ReopenClosedTab()
 	}
-	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyRight) {
+	if s.pressed(c, app.TabNext) || s.pressed(c, app.TabNextAlt) {
 		s.stepTab(1)
 	}
-	if c.Shortcut(ui.Cmd|ui.Alt, ui.KeyLeft) {
+	if s.pressed(c, app.TabPrev) || s.pressed(c, app.TabPrevAlt) {
 		s.stepTab(-1)
 	}
 }
@@ -227,6 +227,11 @@ func (s *App) closeOtherTabs() {
 
 // stepTab shows the tab delta places away in the strip's order, from the
 // last to the first.
+// StepTab moves to the next tab (1) or the previous (-1), wrapping; the
+// native menu's items call it, as macOS hands ⌃Tab to a menu's key
+// equivalent and never to the window.
+func (s *App) StepTab(delta int) { s.stepTab(delta) }
+
 func (s *App) stepTab(delta int) {
 	vis := s.core.VisibleTabs()
 	if len(vis) == 0 {

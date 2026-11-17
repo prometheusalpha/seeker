@@ -9,9 +9,9 @@ import (
 
 const quickRowH = 32
 
-// quickKeys opens the palette on ⌘P, from anywhere in the window.
+// quickKeys opens the palette on its shortcut, from anywhere in the window.
 func (s *App) quickKeys(c *ui.Context) {
-	if c.Shortcut(ui.Cmd, ui.KeyP) {
+	if s.pressed(c, app.QuickOpenKey) {
 		s.core.OpenQuickOpen()
 	}
 }

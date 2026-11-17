@@ -92,10 +92,10 @@ func (s *App) runBar(c *ui.Context, tab app.Tab) {
 		} else if ui.Button(c.Key("run"), "Run").Height(26).Tooltip("Run the selection, the statement at the caret, or the file (⌘↵)").Clicked() {
 			s.core.RunSmart(tab.ID)
 		}
-		if iconButton(c, icons.WandSparkles, "Format SQL (⌥⇧F)").Clicked() {
+		if iconButton(c, icons.WandSparkles, "Format SQL ("+s.chordText(app.EditorFormat)+")").Clicked() {
 			s.core.Format(tab.ID)
 		}
-		if iconButton(c, icons.Zap, "Explain the statement (⌥⇧E)").Clicked() {
+		if iconButton(c, icons.Zap, "Explain the statement ("+s.chordText(app.EditorExplain)+")").Clicked() {
 			s.core.ExplainSmart(tab.ID)
 		}
 		s.datasourcePicker(c, tab)
@@ -113,7 +113,7 @@ func (s *App) runBar(c *ui.Context, tab app.Tab) {
 			state = "Scratch"
 		}
 		ui.Text(c, state).FontSize(11).TextColor(t.TextMuted)
-		if iconButton(c, icons.Download, "Save (⌘S)").Clicked() {
+		if iconButton(c, icons.Download, "Save ("+s.chordText(app.EditorSave)+")").Clicked() {
 			s.core.SaveTab(tab.ID)
 		}
 	})

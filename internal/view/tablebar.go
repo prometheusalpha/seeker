@@ -2,7 +2,6 @@ package view
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/egoist/mygo/ui"
 
@@ -58,13 +57,13 @@ func (s *App) tableResults(c *ui.Context, tab app.Tab) {
 
 // tableKeys are the keys of a table tab that work wherever the focus is.
 func (s *App) tableKeys(c *ui.Context, tab app.Tab) {
-	if c.Shortcut(ui.Cmd, ui.KeyR) {
+	if s.pressed(c, app.ResultRerun) {
 		s.core.ReloadTable(tab.ID)
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyL) {
+	if s.pressed(c, app.FocusWhere) {
 		s.focusWhere = true
 	}
-	if tv := s.core.TableOf(tab.ID); tv != nil && tv.Grid != nil && tv.Grid.Pending() > 0 && c.Shortcut(ui.Cmd, ui.KeyS) {
+	if tv := s.core.TableOf(tab.ID); tv != nil && tv.Grid != nil && tv.Grid.Pending() > 0 && s.pressed(c, app.EditorSave) {
 		s.core.CommitEdits(tab.ID)
 	}
 }
@@ -81,23 +80,9 @@ func (s *App) tableBar(c *ui.Context, tab app.Tab, tv *app.TableView) {
 		} else if ui.Button(c.Key("count"), "Count").Height(26).Tooltip("Count the rows under the WHERE").Clicked() {
 			s.core.CountTable(tab.ID)
 		}
-		if iconButton(c, icons.Refresh, "Reload (⌘R)").Clicked() {
+		if iconButton(c, icons.Refresh, "Reload ("+s.chordText(app.ResultRerun)+")").Clicked() {
 			s.core.ReloadTable(tab.ID)
 		}
-		if ui.Button(c.Key("prev"), "‹").Height(26).Disabled(tv.Page <= 1 || tv.Loading).Tooltip("Previous page").Clicked() {
-			s.core.SetTablePage(tab.ID, tv.Page-1)
-		}
-		ui.Text(c, strconv.Itoa(tv.Page)).FontSize(12).SingleLine()
-		if ui.Button(c.Key("next"), "›").Height(26).Disabled(!tv.HasNextPage() || tv.Loading).Tooltip("Next page").Clicked() {
-			s.core.SetTablePage(tab.ID, tv.Page+1)
-		}
-		ui.PopoverMenuButton(c.Key("pagesize"), strconv.Itoa(tv.PageSize)+" rows", func(m *ui.Menu) {
-			for _, n := range app.PageSizes {
-				if m.Item(strconv.Itoa(n)).ID(strconv.Itoa(n)).Radio(n == tv.PageSize).Chosen() {
-					s.core.SetTablePageSize(tab.ID, n)
-				}
-			}
-		}).Height(26).Tooltip("Rows per page")
 		if tv.Grid != nil {
 			s.columnsButton(c, tv.Grid)
 			s.exportMenu(c, tv.Grid, tab.Title)

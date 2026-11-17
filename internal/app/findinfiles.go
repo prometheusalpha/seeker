@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -61,9 +62,12 @@ func ripgrep() (string, error) {
 		dirs = append(dirs, filepath.Dir(exe))
 	}
 	for _, d := range dirs {
-		p := filepath.Join(d, name)
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p, nil
+		// The bundle has it flat; a source tree (dev, tests) keeps the
+		// fetched binary under its platform's folder.
+		for _, p := range []string{filepath.Join(d, name), filepath.Join(d, runtime.GOOS+"-"+runtime.GOARCH, name)} {
+			if st, err := os.Stat(p); err == nil && !st.IsDir() {
+				return p, nil
+			}
 		}
 	}
 	return exec.LookPath(name)

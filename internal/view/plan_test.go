@@ -47,9 +47,9 @@ func TestPlanViewer(t *testing.T) {
 	if !tt.HasText(root.NodeType) {
 		t.Fatalf("the canvas does not show %q: %v", root.NodeType, tt.Texts())
 	}
-	// The inspector is for a node chosen: none before the click.
-	if tt.HasText("COST SHARE") {
-		t.Error("the inspector is open with nothing chosen")
+	// The inspector opens on the costliest node without a click.
+	if !tt.HasText("COST SHARE") {
+		t.Errorf("no inspector on the costliest node: %v", tt.Texts())
 	}
 	tt.Click(root.NodeType)
 	p.frame(tt)

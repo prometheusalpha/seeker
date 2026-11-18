@@ -29,7 +29,7 @@ const (
 
 // planView is what the viewer keeps of one tab's plan: the way it is read,
 // the node chosen, the canvas's zoom and pan. It is dropped with the plan, so
-// a new Explain starts at the canvas, fitted, with nothing chosen.
+// a new Explain starts at the canvas, fitted, on its costliest node.
 type planView struct {
 	plan   *explain.Plan
 	layout *explain.Layout
@@ -51,6 +51,13 @@ func (s *App) planViewOf(tabID string, p *explain.Plan) *planView {
 	pv := s.plans[tabID]
 	if pv == nil || pv.plan != p {
 		pv = &planView{plan: p, layout: explain.BuildCanvas(p.Nodes), zoom: 1, fit: true}
+		// Like recall, the inspector opens on the costliest node, so the
+		// first thing shown is where the time goes; the first of equals.
+		for _, n := range pv.layout.Nodes {
+			if pv.sel == nil || n.CostShare.V > pv.sel.CostShare.V {
+				pv.sel = n
+			}
+		}
 		// A plan the parser did not read has no nodes to draw: open raw
 		// rather than an empty canvas.
 		if len(p.Nodes) == 0 {

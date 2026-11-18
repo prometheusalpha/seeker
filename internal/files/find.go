@@ -47,6 +47,9 @@ type FindMatch struct {
 	Line, Col, Len int
 	// Text is the line, clipped around the first hit when it is very long.
 	Text string
+	// Off is where the first hit starts in Text, in bytes: Col, less what
+	// the clip took off the front.
+	Off int
 }
 
 // FindResult is what a search found. Truncated is set when the row cap
@@ -163,10 +166,11 @@ func matchOf(ev rgEvent) (FindMatch, bool) {
 		s := ev.Data.Submatches[0]
 		m.Col, m.Len = min(s.Start, len(line)), max(0, min(s.End, len(line))-min(s.Start, len(line)))
 	}
+	m.Off = m.Col
 	if len(line) > maxLineBytes {
 		from := clipBoundary(line, max(0, m.Col-clipLead))
 		to := clipBoundary(line, min(len(line), from+maxLineBytes))
-		m.Text = line[from:to]
+		m.Text, m.Off = line[from:to], m.Col-from
 	}
 	return m, true
 }

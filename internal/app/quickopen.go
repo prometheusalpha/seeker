@@ -40,6 +40,9 @@ type QuickItem struct {
 	Detail string
 	// Type is a table's kind ("view", …).
 	Type string
+	// Hits are the runes of Label the query matched, for highlighting; empty
+	// when there is no query.
+	Hits []int
 
 	Conn, DB, Schema, Table string
 	Path                    string
@@ -394,6 +397,7 @@ func (a *App) QuickResults() []QuickItem {
 		for _, list := range [][]QuickItem{a.quickTablesOf(), q.others} {
 			for _, it := range list {
 				if m, ok := rank.MatchFuzzy(q.Query, it.Label); ok {
+					it.Hits = m.Indices
 					hits = append(hits, scored{it, m.Score})
 				}
 			}

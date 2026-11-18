@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/egoist/mygo/ui"
 
@@ -111,7 +112,10 @@ func (s *App) findRow(c *ui.Context, i int, m files.FindMatch) {
 	}
 	row.Children(func() {
 		ui.Icon(c, icons.FileCode).FontSize(14).TextColor(icon)
-		ui.Text(c, strings.TrimSpace(m.Text)).FontSize(13).TextColor(text).SingleLine().Grow(1)
+		// The row shows the line without its indent, which moves the hit.
+		line := strings.TrimLeftFunc(m.Text, unicode.IsSpace)
+		off := m.Off - (len(m.Text) - len(line))
+		marked(c, strings.TrimRightFunc(line, unicode.IsSpace), [][2]int{{off, off + m.Len}}, text, matchMark(t, chosen)).FontSize(13).SingleLine().Grow(1)
 		ui.Text(c, fmt.Sprintf("%s:%d", s.relPath(m.Path), m.Line)).FontSize(11).TextColor(muted).SingleLine().Shrink(0)
 	})
 	if row.Clicked() {

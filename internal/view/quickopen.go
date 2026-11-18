@@ -98,7 +98,7 @@ func (s *App) quickRow(c *ui.Context, i int, it app.QuickItem) {
 			ico = icons.Database
 		}
 		ui.Icon(c, ico).FontSize(14).TextColor(icon)
-		ui.Text(c, it.Label).FontSize(13).TextColor(text).SingleLine()
+		marked(c, it.Label, runeRanges(it.Label, it.Hits), text, matchMark(t, chosen)).FontSize(13).SingleLine()
 		ui.Spacer(c)
 		detail := it.Detail
 		if it.Type != "" && it.Type != "table" {

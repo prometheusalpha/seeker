@@ -106,6 +106,8 @@ func (s *App) tabPill(c *ui.Context, pal palette, index int, tab app.Tab, ren *r
 	pill.Children(func() {
 		if tab.Mode == app.ModeTable {
 			ui.Icon(c, icons.Table).FontSize(14).TextColor(t.TextMuted)
+		} else if tab.Mode == app.ModeRedis {
+			ui.Icon(c, icons.Database).FontSize(14).TextColor(t.TextMuted)
 		} else {
 			ui.Icon(c, icons.FileCode).FontSize(14).TextColor(t.TextMuted)
 		}

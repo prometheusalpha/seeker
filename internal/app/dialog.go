@@ -10,6 +10,7 @@ import (
 
 	"seeker/internal/driver"
 	"seeker/internal/model"
+	"seeker/internal/redis"
 	"seeker/internal/secret"
 )
 
@@ -21,25 +22,32 @@ type Dialogs struct {
 	Files     FileDialog
 }
 
-// The two engines M2 connects to; Redis joins in M7.
+// The engines a connection can speak.
 const (
 	KindPostgres = "PostgreSQL"
 	KindMySQL    = "MySQL"
+	KindRedis    = "Redis"
 )
 
 // ConnectionKinds is what the dialog's type picker offers.
-var ConnectionKinds = []string{KindPostgres, KindMySQL}
+var ConnectionKinds = []string{KindPostgres, KindMySQL, KindRedis}
 
 func kindOf(name string) model.DBType {
-	if name == KindMySQL {
+	switch name {
+	case KindMySQL:
 		return model.MySQL
+	case KindRedis:
+		return model.Redis
 	}
 	return model.Postgres
 }
 
 func kindName(t model.DBType) string {
-	if t == model.MySQL {
+	switch t {
+	case model.MySQL:
 		return KindMySQL
+	case model.Redis:
+		return KindRedis
 	}
 	return KindPostgres
 }
@@ -59,7 +67,7 @@ type ConnDialog struct {
 	Open    bool
 	Editing string // profile id, "" for a new one
 
-	Kind string // KindPostgres or KindMySQL
+	Kind string // KindPostgres, KindMySQL or KindRedis
 	TLS  string // derived from Params each frame
 	Name string
 	Host string
@@ -72,6 +80,8 @@ type ConnDialog struct {
 	Schema   string
 	Params   string
 	Note     string
+	// DefaultDB is the logical database a Redis profile opens on.
+	DefaultDB string
 
 	ConnectTimeout string
 	QueryTimeout   string
@@ -114,7 +124,7 @@ func (a *App) OpenConnectionDialog(id string) {
 	*d = ConnDialog{
 		Open: true, Editing: id, Kind: KindPostgres, TLS: "disable",
 		Host: "localhost", Port: "5432", User: "postgres", Schema: "public",
-		ConnectTimeout: "10", QueryTimeout: "0", SavePassword: true,
+		ConnectTimeout: "10", QueryTimeout: "0", SavePassword: true, DefaultDB: "0",
 	}
 	if id == "" {
 		d.draftID = rand.Text()
@@ -131,7 +141,10 @@ func (a *App) OpenConnectionDialog(id string) {
 	d.Database, d.Schema, d.Params = p.Database, p.DefaultSchema, p.URLParams
 	d.Note, d.ShowSystem, d.SavePassword = p.Note, p.ShowSystemSchemas, p.SavePassword
 	d.SSL = p.SSL
-	d.TLS = driver.TLSMode(p.DBType, p.SSL, p.URLParams)
+	d.DefaultDB = strconv.Itoa(p.DefaultDB)
+	if p.DBType.IsSQL() {
+		d.TLS = driver.TLSMode(p.DBType, p.SSL, p.URLParams)
+	}
 	d.ConnectTimeout = strconv.Itoa(p.ConnectTimeoutSecs)
 	d.QueryTimeout = strconv.Itoa(p.QueryTimeoutSecs)
 	// lastKind follows Kind only now: set before the profile's engine, it
@@ -181,15 +194,21 @@ func (a *App) ConnSync() {
 	if d.lastKind != "" && d.lastKind != d.Kind {
 		kind := kindOf(d.Kind)
 		d.SSL, d.Params = false, ""
-		if kind == model.MySQL {
+		switch kind {
+		case model.MySQL:
 			d.Port, d.User, d.Schema = "3306", "root", ""
-		} else {
+		case model.Redis:
+			// Redis has no user until ACLs are set up, so the field starts blank.
+			d.Port, d.User, d.Schema = "6379", "", ""
+		default:
 			d.Port, d.User, d.Schema = "5432", "postgres", "public"
 		}
 		d.Test = TestState{}
 	}
 	d.lastKind = d.Kind
-	d.TLS = driver.TLSMode(kindOf(d.Kind), d.SSL, d.Params)
+	if kindOf(d.Kind).IsSQL() {
+		d.TLS = driver.TLSMode(kindOf(d.Kind), d.SSL, d.Params)
+	}
 	if sig := d.signature(); d.sig != "" && sig != d.sig {
 		d.Test = TestState{}
 		d.sig = sig
@@ -200,6 +219,9 @@ func (a *App) ConnSync() {
 // drivers read, and keeps the ssl switch in step.
 func (a *App) ConnTLSChanged() {
 	d := &a.dlg.Conn
+	if !kindOf(d.Kind).IsSQL() {
+		return
+	}
 	p := driver.WithTLSMode(model.Profile{DBType: kindOf(d.Kind), SSL: d.SSL, URLParams: d.Params}, d.TLS)
 	d.Params, d.SSL = p.URLParams, p.SSL
 }
@@ -209,7 +231,7 @@ func (a *App) ConnTLSChanged() {
 func (d *ConnDialog) signature() string {
 	return strings.Join([]string{
 		d.Kind, d.Name, d.Host, d.Port, d.User, d.Password, d.Database, d.Schema, d.Params,
-		d.Note, d.ConnectTimeout, d.QueryTimeout, d.TLS,
+		d.Note, d.ConnectTimeout, d.QueryTimeout, d.TLS, d.DefaultDB,
 		strconv.FormatBool(d.ShowSystem), strconv.FormatBool(d.SavePassword), strconv.FormatBool(d.SSL),
 	}, "\x00")
 }
@@ -224,10 +246,17 @@ func (d *ConnDialog) validate() bool {
 		d.Err = "Enter a port between 1 and 65535."
 	case port > 65535:
 		d.Err = "Port must be 65535 or lower."
-	case strings.TrimSpace(d.User) == "":
+	case strings.TrimSpace(d.User) == "" && kindOf(d.Kind).IsSQL():
 		d.Err = "Enter a user."
+	case kindOf(d.Kind) == model.Redis && !validDB(d.DefaultDB):
+		d.Err = "Default database is a number such as 0."
 	}
 	return d.Err == ""
+}
+
+func validDB(s string) bool {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	return err == nil && n >= 0
 }
 
 // profile is the form as a profile: defaults where a number is blank, the
@@ -252,6 +281,12 @@ func (a *App) profile(d *ConnDialog) model.Profile {
 		Database: strings.TrimSpace(d.Database), DefaultSchema: strings.TrimSpace(d.Schema),
 		URLParams: d.Params, ConnectTimeoutSecs: connect, QueryTimeoutSecs: query,
 		ShowSystemSchemas: d.ShowSystem,
+	}
+	if kind == model.Redis {
+		// A Redis row has no SQL fields: TLS is the one switch.
+		p.Database, p.DefaultSchema, p.URLParams, p.QueryTimeoutSecs, p.ShowSystemSchemas = "", "", "", 0, false
+		p.DefaultDB = atoiOr(d.DefaultDB, 0)
+		return p
 	}
 	if old, ok := a.Profile(id); ok {
 		p.HiddenDatabases = old.HiddenDatabases
@@ -292,6 +327,25 @@ func (a *App) TestConnectionDialog() {
 	if p.SavePassword && password != "" {
 		d.secretWritten = true
 		go a.savePassword(p, password)
+	}
+	if p.DBType == model.Redis {
+		go func() {
+			ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+			defer cancel()
+			info, err := redis.Test(ctx, redis.ConfigOf(p, password))
+			a.upd(func() {
+				d := &a.dlg.Conn
+				if !d.Open || d.testGen != gen {
+					return
+				}
+				if err != nil {
+					d.Test = TestState{Failure: err.Error()}
+					return
+				}
+				d.Test = TestState{OK: true, Detail: strings.TrimSpace(info.Product+" "+info.Version) + " · " + info.Database}
+			})
+		}()
+		return
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)

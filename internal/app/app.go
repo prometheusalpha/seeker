@@ -21,6 +21,7 @@ import (
 	"seeker/internal/grid"
 	"seeker/internal/model"
 	"seeker/internal/pool"
+	"seeker/internal/redis"
 	"seeker/internal/secret"
 	"seeker/internal/store"
 	"seeker/internal/theme"
@@ -117,7 +118,10 @@ type App struct {
 	chordsChanged func()
 	db            *store.Store
 	pl            *pool.Pool
-	upd           Update
+	// rd holds the Redis profiles' clients, which the SQL pool has no part in.
+	rd        *redis.Pool
+	redisTabs map[string]*RedisTab
+	upd       Update
 
 	profiles []model.Profile
 	conns    map[string]*connState
@@ -180,6 +184,7 @@ func New(ctx context.Context, dbPath, recallPath string) (*App, error) {
 		ctx:   ctx,
 		db:    db,
 		pl:    pool.New(),
+		rd:    redis.NewPool(),
 		conns: map[string]*connState{},
 		pinAt: map[model.PinnedTable]int{},
 		ui:    defaultUI(),
@@ -285,6 +290,7 @@ func (a *App) Close() {
 	// closes, and later ones are dropped.
 	a.saves.flush()
 	a.pl.CloseAll()
+	a.rd.CloseAll()
 	a.db.Close()
 }
 

@@ -211,3 +211,27 @@ func TestLive(t *testing.T) {
 		t.Errorf("databases %v, %v", len(dbs), err)
 	}
 }
+
+func TestFormatTTL(t *testing.T) {
+	for in, want := range map[int64]string{-1: "No expiry", -2: "Expired", 0: "0s", 59: "59s", 61: "1m 1s", 3600: "1h", 90061: "1d 1h", 3 * 86400: "3d"} {
+		if got := FormatTTL(in); got != want {
+			t.Errorf("FormatTTL(%d) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestFormatReply(t *testing.T) {
+	arr := Reply{Kind: ReplyArray, Items: []Reply{
+		{Kind: ReplyBytes, Bytes: TextBytes("a<b")},
+		{Kind: ReplyInt, Int: 3},
+		{},
+		{Kind: ReplyArray, Items: []Reply{{Kind: ReplyBytes, Bytes: TextBytes("x")}, {Kind: ReplyBytes, Bytes: TextBytes("y")}}},
+	}}
+	want := "1) \"a<b\"\n2) (integer) 3\n3) (nil)\n4) 1) \"x\"\n   2) \"y\""
+	if got := FormatReply(arr); got != want {
+		t.Errorf("FormatReply:\n%s\nwant\n%s", got, want)
+	}
+	if got := FormatReply(Reply{Kind: ReplyArray}); got != "(empty array)" {
+		t.Errorf("empty: %q", got)
+	}
+}

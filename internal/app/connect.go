@@ -7,6 +7,7 @@ import (
 
 	"seeker/internal/driver"
 	"seeker/internal/model"
+	"seeker/internal/redis"
 	"seeker/internal/secret"
 )
 
@@ -113,6 +114,13 @@ func (a *App) connect(p model.Profile) {
 func (a *App) runConnect(ctx context.Context, cancel context.CancelFunc, p model.Profile, c *connState, done chan struct{}) {
 	defer cancel()
 	password := a.password(p, c)
+	if p.DBType == model.Redis {
+		info, err := a.rd.Open(ctx, redis.ConfigOf(p, password))
+		a.upd(func() {
+			a.finishRedis(p, c, done, driver.ServerInfo{ProductName: info.Product, ProductVersion: info.Version, CurrentDatabase: info.Database}, err)
+		})
+		return
+	}
 	conn, err := driver.Open(ctx, p, password, p.Database)
 	var info driver.ServerInfo
 	if err == nil {
@@ -180,6 +188,33 @@ func (a *App) finishConnect(p model.Profile, c *connState, done chan struct{}, c
 	}
 }
 
+// finishRedis is finishConnect for a Redis profile, whose clients live in
+// the Redis pool and are opened by the attempt itself: a stale result has
+// nothing of its own to close but the clients it just opened under the id,
+// which the winning attempt's Open replaces anyway.
+func (a *App) finishRedis(p model.Profile, c *connState, done chan struct{}, info driver.ServerInfo, err error) {
+	c.mu.Lock()
+	stale := c.done != done
+	if !stale {
+		if err != nil {
+			c.status, c.err = Failed, err.Error()
+		} else {
+			c.status, c.info, c.err = Connected, info, ""
+		}
+		close(done)
+		c.done, c.cancel = nil, nil
+	}
+	c.mu.Unlock()
+	if stale {
+		return
+	}
+	if err != nil {
+		a.tree.errs[Node{Kind: KindConnection, Conn: p.ID}] = err.Error()
+		return
+	}
+	delete(a.tree.errs, Node{Kind: KindConnection, Conn: p.ID})
+}
+
 // CancelConnect stops the attempt in flight. The session it may have just
 // opened closes itself when it lands; waiting on it would keep the sidebar
 // spinning.
@@ -214,6 +249,7 @@ func (a *App) Reconnect(id string) {
 	// The old sessions go now, not when the new one lands: a failed connect
 	// must not leave sessions open under the profile it replaced.
 	a.pl.Disconnect(id)
+	a.rd.Close(id)
 	a.dropConn(id)
 	a.bump()
 	a.connect(p)

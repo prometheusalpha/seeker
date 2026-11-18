@@ -32,6 +32,7 @@ func (s *App) connectionDialog(c *ui.Context, pal palette, d *app.ConnDialog) {
 	open := d.Open
 	ui.Modal(c, &open, func() {
 		pg := d.Kind == app.KindPostgres
+		rd := d.Kind == app.KindRedis
 		title := "New connection"
 		if d.Editing != "" {
 			title = "Edit connection"
@@ -59,13 +60,34 @@ func (s *App) connectionDialog(c *ui.Context, pal palette, d *app.ConnDialog) {
 						}).Width(110)
 					})
 					ui.Row(c).FillWidth().Gap(10).Children(func() {
-						ui.Field(c, "User", func() {
+						user := ui.Field(c, "User", func() {
 							ui.TextInput(c, &d.User)
 						}).Grow(1)
+						if rd {
+							user.Description("Blank unless the server uses ACL users.")
+						}
 						ui.Field(c, "Password", func() {
 							ui.TextInput(c, &d.Password).Password()
 						}).Grow(1)
 					})
+					if rd {
+						ui.Field(c, "Database", func() {
+							ui.TextInput(c, &d.DefaultDB).Placeholder("0")
+						}).Description("The numbered database the connection opens on; the sidebar lists them all.")
+						ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
+							ui.Text(c, "Use TLS").FontSize(12)
+							ui.Spacer(c)
+							ui.Switch(c, &d.SSL).Label("Use TLS")
+						})
+						ui.Field(c, "Note", func() {
+							ui.TextArea(c, &d.Note).Height(60).Placeholder("What this connection is for")
+						})
+						ui.Field(c, "Connect timeout", func() {
+							ui.TextInput(c, &d.ConnectTimeout).Placeholder("10")
+						}).Description("Seconds.")
+						ui.Checkbox(c, &d.SavePassword, "Save password in the keychain")
+						return
+					}
 					database := ui.Field(c, "Database", func() {
 						ui.TextInput(c, &d.Database).Placeholder(databasePlaceholder)
 					})

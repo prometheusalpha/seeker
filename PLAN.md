@@ -400,6 +400,13 @@ Gotchas:
 - Key/value nhị phân: hiển thị UTF-8 nếu hợp lệ, không thì base64; key nhị phân vẫn thao tác được.
 - `parseCommandLine` (quote) và allowlist lệnh đọc phải port kèm test.
 
+Kết quả M7 (2026-11-18; **chưa test tay trong app**, test tự động xanh với Redis thật):
+- `internal/redis`: `Pool` một client go-redis v9 cho mỗi (connection, db), RESP2; `bytes.go` (UTF-8 hợp lệ thì chữ, không thì nhãn `\xNN` + `Binary`, key nhị phân vẫn thao tác được vì `Data` là byte gốc), `safety.go` (allowlist đọc của recall, `ParseCommandLine`, lệnh chiếm kết nối bị từ chối), `ops.go` (SCAN + TYPE/TTL, string đọc tối đa 1 MiB rồi chỉ đọc, HSCAN, SetString/HashSet với `onlyIfAbsent` và TTL `keep` = PTTL rồi PEXPIRE cùng MULTI, UNLINK, ListDatabases từ `CONFIG GET databases` + `INFO keyspace`, `Execute` hỏi xác nhận lệnh ngoài allowlist), `format.go` (`FormatTTL`, `FormatReply` kiểu redis-cli).
+- Kết nối: dialog thêm loại Redis (host, port, user để trống được, mật khẩu keychain, database mặc định, TLS, timeout); `connect.go` mở qua `rd.Open`; sidebar liệt kê `db0…` kèm số key (`KindRedisDB`, lá), bấm mở tab `ModeRedis` (`Tab.Database` là số db, tên tab `<connection> · dbN`, lưu và khôi phục như tab khác). Tab mới/“New query tab” trên connection Redis mở console của db mặc định; sidebar tự chọn dòng db khi mở/chuyển tab.
+- Tab Redis (`app/redistab.go`, `view/redis.go`): danh sách key (pattern, SCAN theo trang như recall: tối đa 20 vòng cho tới 200 key, Load more), giá trị bên phải: string (sửa/Revert/Save, giữ TTL), hash (thêm, sửa, đổi tên field, xoá, Load more), TTL (đếm ngược cục bộ, đặt giây hoặc No expiry), xoá key (hỏi lại), New key (không ghi đè key đã có), console (history ↑/↓, lệnh ghi hỏi “Run anyway”). Kiểu khác (list, set, zset, stream) hiện “chưa hỗ trợ”, console vẫn dùng được.
+- Chưa làm: xoá nhiều key cùng lúc, phát hiện mất kết nối Redis (go-redis tự nối lại theo lệnh), Quick open không có key Redis, TLS không có tuỳ chọn CA/verify. Test live cần `SEEKER_TEST_REDIS=host:port` (dùng db 15 và key có tiền tố riêng, tự dọn).
+
+
 ### M8: Đóng gói
 
 Phạm vi: `go tool mygo build`, icon (`resources/icon.png`), `rg` trong resources, thư viện sqlite native được CLI đóng vào app, cài vào `~/Applications`.

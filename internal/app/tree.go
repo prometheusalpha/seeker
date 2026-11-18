@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	"seeker/internal/driver"
 	"seeker/internal/model"
+	"seeker/internal/redis"
 )
 
 // Kind is what a sidebar row stands for.
@@ -27,6 +29,9 @@ const (
 	// children are on their way, or failed to come.
 	KindLoading
 	KindError
+	// KindRedisDB is one logical database of a Redis connection, a leaf: its
+	// keys live in the tab it opens. DB is its number and Badge its key count.
+	KindRedisDB
 )
 
 // Group is one of a table's four metadata lists, which load on demand: the
@@ -213,6 +218,9 @@ func (a *App) ActivateNode(n Node) {
 		}
 	case KindTable:
 		a.OpenTable(n.Conn, n.DB, n.Schema, n.Table)
+	case KindRedisDB:
+		db, _ := strconv.Atoi(n.DB)
+		a.OpenRedisTab(n.Conn, db)
 	}
 }
 
@@ -415,6 +423,21 @@ func (a *App) loadConnection(n Node) {
 				return
 			}
 			a.treeDone(n, gen, nil, err)
+			return
+		}
+		if p.DBType == model.Redis {
+			var dbs []redis.Database
+			ctx, cancel := context.WithTimeout(a.ctx, redisTimeout)
+			defer cancel()
+			c, err := a.rd.Server(ctx, p.ID)
+			if err == nil {
+				dbs, err = redis.ListDatabases(ctx, c)
+			}
+			var kids []Node
+			for _, d := range dbs {
+				kids = append(kids, Node{Kind: KindRedisDB, Conn: p.ID, DB: strconv.Itoa(d.DB), Badge: strconv.Itoa(d.Keys)})
+			}
+			a.treeDone(n, gen, kids, err)
 			return
 		}
 		var dbs []driver.DatabaseInfo

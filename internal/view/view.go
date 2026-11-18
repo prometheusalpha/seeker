@@ -38,6 +38,8 @@ type App struct {
 	systemDark      bool
 	// plans is the plan viewer's state for each tab.
 	plans map[string]*planView
+	// redis is the view's state of each Redis tab.
+	redis map[string]*redisUI
 
 	// refocusGrid hands the keyboard back to the grid after a cell editor
 	// closes; focusWhere moves it to the WHERE field (⌘L).
@@ -257,6 +259,14 @@ func (s *App) workspace(c *ui.Context, pal palette) {
 			s.tabStrip(c, pal)
 			ui.Divider(c)
 			s.results(c)
+		})
+		return
+	}
+	if tab, ok := s.core.ActiveTab(); ok && tab.Mode == app.ModeRedis {
+		island(c, pal).Fill().Children(func() {
+			s.tabStrip(c, pal)
+			ui.Divider(c)
+			s.redisWorkspace(c, tab)
 		})
 		return
 	}

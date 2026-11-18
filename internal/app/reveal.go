@@ -18,11 +18,21 @@ type reveal struct {
 	until time.Time
 }
 
+// revealRedis is the row of a Redis database, whose key count in Badge the
+// tab does not know either.
+func (r *reveal) revealRedis() bool { return r.table.Kind == KindRedisDB }
+
 // RevealActiveTable opens the connection, database and schema holding the
-// active table tab. The table's own row is found by the view once the
+// active table tab, or the connection of a Redis tab, whose row is its
+// database. The table's own row is found by the view once the
 // levels load, through TakeReveal; nothing happens for any other tab.
 func (a *App) RevealActiveTable() {
 	t, ok := a.ActiveTab()
+	if ok && t.Mode == ModeRedis {
+		a.tree.List.Open.Add(Node{Kind: KindConnection, Conn: t.Conn})
+		a.tree.reveal = &reveal{table: Node{Kind: KindRedisDB, Conn: t.Conn, DB: t.Database}, until: time.Now().Add(revealWait)}
+		return
+	}
 	if !ok || t.Mode != ModeTable {
 		return
 	}
@@ -46,7 +56,11 @@ func (a *App) TakeReveal(n Node) bool {
 		a.tree.reveal = nil
 		return false
 	}
-	if n.Kind != KindTable || tableOf(n) != r.table {
+	if r.revealRedis() {
+		if n.Kind != KindRedisDB || n.Conn != r.table.Conn || n.DB != r.table.DB {
+			return false
+		}
+	} else if n.Kind != KindTable || tableOf(n) != r.table {
 		return false
 	}
 	a.tree.reveal = nil

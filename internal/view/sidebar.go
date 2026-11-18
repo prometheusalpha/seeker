@@ -118,6 +118,13 @@ func (s *App) treeRow(c *ui.Context, out *ui.OutlineState[app.Node], n app.Node)
 				ui.Spacer(c)
 				ui.Icon(c, icons.Pin).FontSize(11).TextColor(muted).Label("Pinned")
 			}
+		case app.KindRedisDB:
+			ui.Icon(c, icons.Database).FontSize(14).TextColor(icon)
+			ui.Text(c, "db"+n.DB).FontSize(13).FontWeight(430).SingleLine()
+			ui.Spacer(c)
+			if n.Badge != "0" {
+				ui.Text(c, n.Badge).FontSize(11).TextColor(muted).SingleLine().Label(n.Badge + " keys")
+			}
 		case app.KindGroup:
 			ui.Icon(c, groupIcon(n.Group)).FontSize(14).TextColor(icon)
 			ui.Text(c, groupLabel(n.Group)).FontSize(13).FontWeight(430).SingleLine()
@@ -186,8 +193,11 @@ func (s *App) connectionEngine(p model.Profile) string {
 			return detail
 		}
 	}
-	if p.DBType == model.MySQL {
+	switch p.DBType {
+	case model.MySQL:
 		return app.KindMySQL
+	case model.Redis:
+		return app.KindRedis
 	}
 	return app.KindPostgres
 }

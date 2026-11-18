@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"path/filepath"
 	"slices"
+	"strconv"
 
 	"seeker/internal/model"
 )
@@ -12,9 +13,11 @@ import (
 type TabMode string
 
 const (
-	// ModeQuery is a SQL editor tab; ModeTable a table's rows.
+	// ModeQuery is a SQL editor tab; ModeTable a table's rows; ModeRedis one
+	// Redis database, its number in Database.
 	ModeQuery TabMode = "query"
 	ModeTable TabMode = "table"
+	ModeRedis TabMode = "redis"
 )
 
 // closedTabs bounds the reopen stack, which lives for the session only.
@@ -160,6 +163,27 @@ func (a *App) OpenTable(connID, database, schema, table string) {
 	a.ensureTabConnected(t)
 }
 
+// OpenRedisTab shows one logical database of a Redis connection, reusing its
+// tab when one is open.
+func (a *App) OpenRedisTab(connID string, db int) {
+	defer a.RevealActiveTable()
+	database := strconv.Itoa(db)
+	if i := a.findTab(Tab{Conn: connID, Database: database, Mode: ModeRedis}, ""); i >= 0 {
+		a.tabs.Active = i
+		a.ensureTabConnected(a.tabs.Items[i])
+		return
+	}
+	// The connection's name is in the title, so two servers' db0 differ.
+	name := "Redis"
+	if p, ok := a.Profile(connID); ok {
+		name = p.Name
+	}
+	t := Tab{ID: rand.Text(), Title: name + " · db" + database, Conn: connID, Database: database, Mode: ModeRedis}
+	a.tabs.Items = append(a.tabs.Items, t)
+	a.tabs.Active = len(a.tabs.Items) - 1
+	a.ensureTabConnected(t)
+}
+
 // QueryTab is what opening a SQL tab takes: the target, and the text a file
 // brings with it.
 type QueryTab struct {
@@ -196,6 +220,14 @@ func (a *App) OpenQueryTab(o QueryTab) {
 // NewQueryTab opens an empty tab on the active SQL connection, else the
 // first one, as recall's toolbar does.
 func (a *App) NewQueryTab() {
+	// Redis has no SQL to write: its new query is the console of the
+	// connection's own database, as recall's toolbar opens it.
+	if t, ok := a.ActiveTab(); ok {
+		if p, ok := a.Profile(t.Conn); ok && p.DBType == model.Redis {
+			a.OpenRedisTab(p.ID, p.DefaultDB)
+			return
+		}
+	}
 	p, ok := a.queryProfile()
 	if !ok {
 		a.toast("Add a SQL connection first")
@@ -340,6 +372,7 @@ func (a *App) forceClose(id string) {
 		tv.cancel()
 	}
 	delete(a.tables, id)
+	delete(a.redisTabs, id)
 	switch {
 	case len(a.tabs.Items) == 0:
 		a.tabs.Active = -1
@@ -453,7 +486,7 @@ func (a *App) restoreTabs(saved savedTabs) {
 			continue
 		case t.Mode == ModeTable && t.Table == "":
 			continue
-		case t.Mode != ModeTable && t.Mode != ModeQuery:
+		case t.Mode != ModeTable && t.Mode != ModeQuery && t.Mode != ModeRedis:
 			continue
 		}
 		if t.Title == "" {

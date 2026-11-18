@@ -89,3 +89,26 @@ func TestAttachConnectsRestoredTab(t *testing.T) {
 		t.Errorf("status %v: the restored tab's connection was not started", s)
 	}
 }
+
+// A Redis form saves a profile with no SQL fields, whatever the form held
+// before the type changed, and needs no user.
+func TestRedisDialogProfile(t *testing.T) {
+	a := &App{}
+	d := &a.dlg.Conn
+	*d = ConnDialog{Open: true, Kind: KindRedis, Name: "cache", Host: "10.0.0.5", Port: "6379", DefaultDB: "3",
+		Database: "leftover", Schema: "public", Params: "sslmode=require", ConnectTimeout: "7", QueryTimeout: "9", SSL: true}
+	if !d.validate() {
+		t.Fatalf("a Redis form without a user must be valid: %q", d.Err)
+	}
+	p := a.profile(d)
+	if p.DBType != model.Redis || p.DefaultDB != 3 || !p.SSL || p.ConnectTimeoutSecs != 7 || p.Host != "10.0.0.5" {
+		t.Errorf("profile %+v", p)
+	}
+	if p.Database != "" || p.DefaultSchema != "" || p.URLParams != "" || p.QueryTimeoutSecs != 0 {
+		t.Errorf("SQL fields leaked into a Redis profile: %+v", p)
+	}
+	d.DefaultDB = "x"
+	if d.validate() {
+		t.Error("a database that is not a number must be refused")
+	}
+}

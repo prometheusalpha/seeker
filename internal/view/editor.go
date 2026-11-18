@@ -28,6 +28,7 @@ func (s *App) editorPane(c *ui.Context) {
 	ui.Divider(c)
 	editor.View(c, st).Grow(1).FillWidth().DrawOver(func(p *ui.Painter, r ui.Rect) {
 		s.statementFrame(c.Theme(), p, r, tab.ID, st)
+		s.bookmarkTags(c.Theme(), p, r, tab.ID, st)
 	})
 }
 
@@ -80,6 +81,42 @@ func (s *App) statementFrame(t *ui.Theme, p *ui.Painter, r ui.Rect, id string, s
 	// partly out of view would draw its box over the run bar or the results;
 	// the clip cuts it at the edge, as the text is.
 	p.Clip(r, 0, func() { p.Stroke(box, t.Accent.Alpha(0.5), 3, 1) })
+}
+
+// bookmarkTag is the color of a bookmark's tag in the gutter: its border,
+// and its fill at a low alpha, as IntelliJ and DataGrip draw it.
+var bookmarkTag = ui.RGB(245, 158, 11)
+
+// bookmarkTags draws a small outlined tag with its character after the number
+// of each bookmarked line. The editor's own mark is a dot, which cannot carry
+// a letter. The tag takes the gutter's fold column (the editor keeps folding
+// on and the fold arrow shows only on a hovered line), which leaves the
+// number whole without widening the gutter, which only the editor can do.
+// Like the statement frame it is measured from st.Rect, so it follows
+// scrolling, and is clipped to the editor.
+func (s *App) bookmarkTags(t *ui.Theme, p *ui.Painter, r ui.Rect, id string, st *editor.State) {
+	marks := s.core.GutterBookmarks(id)
+	if len(marks) == 0 {
+		return
+	}
+	p.Clip(r, 0, func() {
+		for _, m := range marks {
+			row, ok := st.Rect(m.Offset)
+			if !ok {
+				continue
+			}
+			// The text starts at row.X + the horizontal scroll, the gutter
+			// ends 4 DIPs before it and its fold column, a row's 0.8, 4
+			// more in; a row is as high as a line.
+			size := row.H * 0.8
+			tag := ui.Rect{X: r.X + row.X + st.ScrollX() - 8 - size, Y: r.Y + row.Y + (row.H-size)/2, W: size, H: size}
+			p.Fill(tag, bookmarkTag.Alpha(0.18), 4)
+			p.Stroke(tag, bookmarkTag, 4, 1.5)
+			label := ui.Span{Text: strings.ToUpper(m.Mnemonic), Size: 11, Weight: 600}
+			tw, th := p.MeasureText(0, label)
+			p.Text(tag.X+(tag.W-tw)/2, tag.Y+(tag.H-th)/2, label.Text, 11, t.Text)
+		}
+	})
 }
 
 // runBar names the tab's target and takes the run, format and explain

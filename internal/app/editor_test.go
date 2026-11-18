@@ -417,7 +417,7 @@ func TestBookmarkAssignAndJump(t *testing.T) {
 	te.st.Select(12, 12) // line 2
 	a.SetBookmarkHere(tab.ID, "q")
 	p.waitFor(t, "bookmark", func() bool { return len(a.bookmarks) == 1 })
-	if marks := a.gutterMarks(path); len(marks) != 1 || marks[0].Line != 1 {
+	if marks := a.GutterBookmarks(tab.ID); len(marks) != 1 || marks[0].Offset != 10 || marks[0].Mnemonic != "q" {
 		t.Fatalf("gutter %+v", marks)
 	}
 	if a.BookmarkOn(path, 2) != "q" {

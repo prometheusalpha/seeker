@@ -126,8 +126,8 @@ func (a *App) SyncFont() {
 }
 
 // SyncEditors writes each editor's text to its tab, so a tab is dirty the
-// moment it differs from what it was saved with, and keeps the gutter's
-// bookmark marks and the files' autosave current. Editors of closed tabs
+// moment it differs from what it was saved with, and keeps the files'
+// autosave current. Editors of closed tabs
 // go.
 func (a *App) SyncEditors() {
 	for id, te := range a.editors {
@@ -142,7 +142,6 @@ func (a *App) SyncEditors() {
 			te.stmtValid = false
 			a.scheduleSave(id)
 		}
-		te.st.GutterMarks = a.gutterMarks(a.tabs.Items[i].Path)
 	}
 	a.applyJump()
 	if t, ok := a.ActiveTab(); ok && t.Mode == ModeQuery {

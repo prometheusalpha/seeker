@@ -5,15 +5,10 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 
 	"seeker/internal/model"
 )
-
-// bookmarkColor marks a bookmarked line in the gutter. The editor's mark is
-// a dot of one color, so the mnemonic itself is not drawn there.
-var bookmarkColor = ui.RGB(245, 158, 11)
 
 // jump is a caret placement waiting for the tab's editor to exist.
 type jump struct {
@@ -56,17 +51,29 @@ func (a *App) BookmarkMnemonics() []string {
 	return out
 }
 
-func (a *App) gutterMarks(path string) []editor.GutterMark {
-	if path == "" {
+// GutterBookmark is a bookmarked line as the gutter draws it: where the line
+// starts in the buffer, and the character bound to it. The editor's own
+// gutter mark is a dot, so the view draws the tag itself.
+type GutterBookmark struct {
+	Offset   int
+	Mnemonic string
+}
+
+// GutterBookmarks lists the bookmarks of the tab's file that fall inside its
+// text, a line the file has lost since being skipped.
+func (a *App) GutterBookmarks(id string) []GutterBookmark {
+	te, i := a.editors[id], a.indexOf(id)
+	if te == nil || i < 0 || a.tabs.Items[i].Path == "" {
 		return nil
 	}
-	var marks []editor.GutterMark
+	var out []GutterBookmark
+	lines := te.st.Buffer.LineCount()
 	for _, b := range a.bookmarks {
-		if b.Path == path {
-			marks = append(marks, editor.GutterMark{Line: b.Line - 1, Color: bookmarkColor})
+		if b.Path == a.tabs.Items[i].Path && b.Line >= 1 && b.Line <= lines {
+			out = append(out, GutterBookmark{Offset: te.st.Buffer.Offset(editor.Pos{Line: b.Line - 1}), Mnemonic: b.Mnemonic})
 		}
 	}
-	return marks
+	return out
 }
 
 // BookmarkOn is the mnemonic bound to a line (from 1) of a file, "" for

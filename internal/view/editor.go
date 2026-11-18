@@ -76,7 +76,10 @@ func (s *App) statementFrame(t *ui.Theme, p *ui.Painter, r ui.Rect, id string, s
 	// off the first and last glyphs.
 	const pad = 4
 	box := ui.Rect{X: r.X + left - pad, Y: r.Y + top - 1, W: right - left + 2*pad, H: bottom - top + 2}
-	p.Stroke(box, t.Accent.Alpha(0.5), 3, 1)
+	// DrawOver paints past the editor's bounds, so a statement scrolled
+	// partly out of view would draw its box over the run bar or the results;
+	// the clip cuts it at the edge, as the text is.
+	p.Clip(r, 0, func() { p.Stroke(box, t.Accent.Alpha(0.5), 3, 1) })
 }
 
 // runBar names the tab's target and takes the run, format and explain
@@ -86,7 +89,7 @@ func (s *App) runBar(c *ui.Context, tab app.Tab) {
 	running := s.core.Running(tab.ID)
 	ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 12).Gap(8).Children(func() {
 		if running {
-			if ui.Button(c.Key("stop"), "Stop").Height(26).Tooltip("Stop the running query (⌘↵)").Clicked() {
+			if ui.Button(c.Key("stop"), "Stop").Height(26).Tooltip("Stop the running query or explain (⌘↵)").Clicked() {
 				s.core.Stop(tab.ID)
 			}
 		} else if ui.Button(c.Key("run"), "Run").Height(26).Tooltip("Run the selection, the statement at the caret, or the file (⌘↵)").Clicked() {

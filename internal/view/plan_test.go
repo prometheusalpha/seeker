@@ -113,3 +113,23 @@ func zoomText(tt *ui.Tester) string {
 	}
 	return ""
 }
+
+// An Explain in flight turns Run into Stop, and Stop ends it without a plan
+// or an error.
+func TestStopEndsAnExplain(t *testing.T) {
+	profile := model.Profile{ID: "x", Name: "nowhere", DBType: model.Postgres, Host: "127.0.0.1", Port: 1, Username: "u", Database: "d", ConnectTimeoutSecs: 2}
+	core, p, tt := editorWindow(t, profile, "", "select 1")
+	id := activeID(core)
+	run := core.RunViewOf(id)
+	run.Explaining = true
+	core.PaneOf(id).View = app.ViewExplain
+	p.frame(tt)
+	if tt.HasText("Run") || !tt.HasText("Stop") || !tt.HasText("Explaining…") {
+		t.Fatalf("an Explain should show Stop: %v", tt.Texts())
+	}
+	tt.Click("Stop")
+	p.frame(tt)
+	if !tt.HasText("Explain stopped") || !tt.HasText("Run") || run.Explaining || run.PlanErr != "" {
+		t.Errorf("Stop should end the Explain quietly: %v", tt.Texts())
+	}
+}

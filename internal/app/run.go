@@ -37,7 +37,13 @@ type runState struct {
 	Err string
 
 	Explaining bool
-	Plan       *driver.Plan
+	// PlanStopped is set when Stop ended an Explain, which has no plan or
+	// error to show then. planGen drops what an Explain stopped or replaced
+	// still publishes, and planCancel is how Stop reaches the one in flight.
+	PlanStopped bool
+	planGen     int
+	planCancel  context.CancelFunc
+	Plan        *driver.Plan
 	// Parsed is Plan read into nodes for the viewer; its Nodes are empty for
 	// an answer the parser does not read, which the viewer shows as raw.
 	Parsed  *explain.Plan
@@ -51,7 +57,7 @@ type RunView = runState
 
 // Any reports something to show: a run, an error, a plan.
 func (r *runState) Any() bool {
-	return r.Running || r.Err != "" || len(r.Results) > 0 || r.Explaining || r.Plan != nil || r.PlanErr != "" || r.Stopped
+	return r.Running || r.Err != "" || len(r.Results) > 0 || r.Explaining || r.Plan != nil || r.PlanErr != "" || r.Stopped || r.PlanStopped
 }
 
 // RunViewOf is a tab's run state, nil for a tab with no editor.
@@ -65,10 +71,11 @@ func (a *App) RunOf(id string) *runState {
 	return nil
 }
 
-// Running reports a run in flight, which the run bar turns into Stop.
+// Running reports a run or an Explain in flight, which the run bar turns
+// into Stop.
 func (a *App) Running(id string) bool {
 	r := a.RunOf(id)
-	return r != nil && r.Running
+	return r != nil && (r.Running || r.Explaining)
 }
 
 // RunSmart is Cmd+Enter, narrowing the run as the user narrowed it: a run
@@ -81,7 +88,7 @@ func (a *App) RunSmart(id string) {
 	if te == nil {
 		return
 	}
-	if te.run.Running {
+	if te.run.Running || te.run.Explaining {
 		a.Stop(id)
 		return
 	}
@@ -108,7 +115,7 @@ func (te *tabEditor) smartTarget() (script string, base int, ok bool) {
 // RunAll runs the whole file, which the Run button does.
 func (a *App) RunAll(id string) {
 	te := a.editors[id]
-	if te == nil || te.run.Running {
+	if te == nil || te.run.Running || te.run.Explaining {
 		return
 	}
 	text := te.st.Buffer.String()
@@ -135,7 +142,7 @@ func (a *App) run(te *tabEditor, script string, base int) {
 	r.gen++
 	gen := r.gen
 	*r = runState{gen: gen, cancel: cancel, Running: true, Started: time.Now(), Script: script, Base: base,
-		Plan: r.Plan, Parsed: r.Parsed, PlanErr: r.PlanErr, PlanSQL: r.PlanSQL}
+		Plan: r.Plan, Parsed: r.Parsed, PlanErr: r.PlanErr, PlanSQL: r.PlanSQL, planGen: r.planGen}
 	// The new run's rows get new grids: a selection or a hidden column of
 	// the last run's must not stick to them.
 	te.grids, te.pane = nil, ResultPane{}
@@ -174,11 +181,24 @@ func (a *App) run(te *tabEditor, script string, base int) {
 	}()
 }
 
-// Stop cancels the run in flight. The driver interrupts the statement on
-// the server (KILL QUERY for MySQL); results already in stay.
+// Stop cancels the run or the Explain in flight. The driver interrupts the
+// statement on the server (KILL QUERY for MySQL); results already in stay.
 func (a *App) Stop(id string) {
 	r := a.RunOf(id)
-	if r == nil || !r.Running {
+	if r == nil {
+		return
+	}
+	if r.Explaining {
+		// The Explain's goroutine ends on its own once cancelled; its
+		// answer is dropped by planGen, so the pane can settle now.
+		r.planGen++
+		r.Explaining, r.PlanStopped = false, true
+		if r.planCancel != nil {
+			r.planCancel()
+		}
+		return
+	}
+	if !r.Running {
 		return
 	}
 	r.Stopped = true
@@ -287,13 +307,19 @@ func (a *App) Explain(id, sql string) {
 	a.ensureTabConnected(t)
 	cs := a.conn(t.Conn)
 	te.run.Explaining, te.run.Plan, te.run.Parsed, te.run.PlanErr, te.run.PlanSQL = true, nil, nil, "", sql
+	te.run.PlanStopped = false
 	te.pane.View = ViewExplain
 	gen := te.run.gen
+	te.run.planGen++
+	planGen := te.run.planGen
+	ctx, cancel := context.WithCancel(a.ctx)
+	te.run.planCancel = cancel
 	go func() {
+		defer cancel()
 		var plan driver.Plan
 		err := waitConnected(cs)
 		if err == nil {
-			err = a.pl.Query(a.ctx, t.Conn, t.Database, id, func(ctx context.Context, c driver.Conn) error {
+			err = a.pl.Query(ctx, t.Conn, t.Database, id, func(ctx context.Context, c driver.Conn) error {
 				var e error
 				plan, e = c.Explain(ctx, sql)
 				return e
@@ -301,10 +327,10 @@ func (a *App) Explain(id, sql string) {
 		}
 		a.upd(func() {
 			te := a.editors[id]
-			if te == nil || te.run.gen != gen || te.run.PlanSQL != sql {
+			if te == nil || te.run.gen != gen || te.run.planGen != planGen {
 				return
 			}
-			te.run.Explaining = false
+			te.run.Explaining, te.run.planCancel = false, nil
 			if err != nil {
 				te.run.PlanErr = err.Error()
 				return

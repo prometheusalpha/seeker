@@ -75,6 +75,8 @@ func (s *App) planPane(c *ui.Context, tabID string, r *app.RunView) {
 	switch {
 	case r.Explaining:
 		s.resultsNote(c, "Explaining…")
+	case r.PlanStopped:
+		s.resultsNote(c, "Explain stopped")
 	case r.PlanErr != "":
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Padding(12).Gap(8).Children(func() {

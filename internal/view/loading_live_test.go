@@ -1,9 +1,13 @@
 package view
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"seeker/internal/driver"
 )
 
 // A slow table load shows its clock and Cancel over the rows from before;
@@ -55,4 +59,41 @@ func TestLiveQueryRunningCancel(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.waitUntil(t, tt, "the stop", func() bool { return !core.Running(id) && hasAny(tt, "stopped") })
+}
+
+// A full page leaves the total open ("100+"); clicking it counts the rows
+// under the filter, and the exact total replaces it.
+func TestLiveTableCount(t *testing.T) {
+	profile, password, core, p, tt := livePGWindow(t, "select 1")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	conn, err := driver.Open(ctx, profile, password, profile.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	for _, s := range []string{
+		"DROP TABLE IF EXISTS seeker_count_t",
+		"CREATE TABLE seeker_count_t AS SELECT g AS id FROM generate_series(1, 150) g",
+	} {
+		if res := conn.Execute(ctx, s, 10, nil); len(res) != 1 || res[0].Err != nil {
+			t.Fatalf("seed %q: %+v", s, res)
+		}
+	}
+	t.Cleanup(func() { conn.Execute(context.Background(), "DROP TABLE IF EXISTS seeker_count_t", 10, nil) })
+
+	core.OpenTable(profile.ID, profile.Database, "public", "seeker_count_t")
+	tab, _ := core.ActiveTab()
+	p.waitUntil(t, tt, "the first page", func() bool { tv := core.TableOf(tab.ID); return tv != nil && tv.Grid != nil && !tv.Loading })
+	tv := core.TableOf(tab.ID)
+	if !tt.HasText("100/") || !tt.HasText("100+") {
+		t.Fatalf("an open total: %v", tt.Texts())
+	}
+	if err := tt.Click("Count every row matching the filter"); err != nil {
+		t.Fatal(err)
+	}
+	p.waitUntil(t, tt, "the count", func() bool { return tv.HasCount && tt.HasText("150") })
+	if tv.Count != 150 || tt.HasText("100+") {
+		t.Errorf("count %d; %v", tv.Count, tt.Texts())
+	}
 }

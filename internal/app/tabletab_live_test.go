@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"seeker/internal/driver"
+	"seeker/internal/grid"
 	"seeker/internal/model"
 )
 
@@ -197,10 +198,17 @@ func testLiveCommitEdits(t *testing.T, profile model.Profile, password string) {
 	if g.Pending() != 2 || tv.Grid != g {
 		t.Fatalf("a refused write dropped the edits: pending %d", g.Pending())
 	}
-	a.ReloadTable(id)
-	a.waitTable(t, p, id)
-	if got := colTexts(tv.Grid, 1); got[2] != "n3" {
-		t.Errorf("a refused write changed row 3: %v", got)
+	// The staged edits block a reload, so the row is read from the server.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := driver.Open(ctx, profile, password, profile.Database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	res := conn.Execute(ctx, "SELECT name FROM seeker_m4_t WHERE id = 3", 10, nil)
+	if len(res) != 1 || res[0].Err != nil || len(res[0].Rows) != 1 || grid.FormatCell(res[0].Rows[0][0], "") != "n3" {
+		t.Errorf("a refused write changed row 3: %+v", res)
 	}
 }
 

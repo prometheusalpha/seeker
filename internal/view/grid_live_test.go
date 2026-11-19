@@ -176,7 +176,9 @@ func TestLiveTableTabWindow(t *testing.T) {
 	p.waitUntil(t, tt, "the rows", func() bool { return tt.HasText("n5") })
 	tab, _ := core.ActiveTab()
 	tv := core.TableOf(tab.ID)
-	if !hasAny(tt, "5 rows") || !tt.HasText("Count") || !tt.HasText("100 rows") {
+	// The status bar reads loaded/total; a short page is the whole table,
+	// so the total needs no count.
+	if !tt.HasText("5/") || !tt.HasText(" rows") || !tt.HasText("100 rows") {
 		t.Fatalf("table tab: %v", tt.Texts())
 	}
 
@@ -186,13 +188,9 @@ func TestLiveTableTabWindow(t *testing.T) {
 	tt.Type("id <= 3")
 	tt.Key(0, ui.KeyEnter)
 	p.waitUntil(t, tt, "the filtered rows", func() bool { return tv.Where == "id <= 3" && !tv.Loading && !tt.HasText("n4") })
-	if !tt.HasText("n3") {
+	if !tt.HasText("n3") || !tt.HasText("3/") {
 		t.Fatalf("filtered: %v", tt.Texts())
 	}
-	if err := tt.Click("Count"); err != nil {
-		t.Fatal(err)
-	}
-	p.waitUntil(t, tt, "the count", func() bool { return hasAny(tt, "3 in total") })
 
 	// ⌃⇧↓ sorts by the column the cursor is on, writing the ORDER BY.
 	if err := tt.Click("n2"); err != nil {

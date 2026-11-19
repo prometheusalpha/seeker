@@ -362,6 +362,12 @@ func (a *App) forceClose(id string) {
 	if len(a.tabs.Closed) > closedTabs {
 		a.tabs.Closed = a.tabs.Closed[1:]
 	}
+	a.dropTab(i)
+}
+
+// dropTab is forceClose without a place on the reopen stack.
+func (a *App) dropTab(i int) {
+	id := a.tabs.Items[i].ID
 	a.tabs.Items = slices.Delete(a.tabs.Items, i, i+1)
 	a.pl.CloseTab(id)
 	a.Stop(id)

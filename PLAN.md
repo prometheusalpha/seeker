@@ -192,7 +192,7 @@ Gotchas: fold ẩn dòng; tab và ký tự rộng; RTL. Trong lúc chờ F2, dù
 
 Kết quả: `State.Rect(off) (ui.Rect, bool)` (toạ độ caret theo byte offset, tính từ góc trên trái hộp editor, đã trừ scroll và cộng gutter; false khi dòng bị fold), `ScrollX()`, `TextX()`. Test `ui/editor/rect_test.go` (offset, fold, soft wrap, scroll). Đã commit trong fork: `a1d1d92c`.
 
-### M2: Shell thật (kết nối, duyệt schema, tab)
+### M2: Shell thật (kết nối, duyệt schema, tab) ✅ (đã test tay)
 
 Phạm vi:
 - Mở store ở `PathUserData`, `ImportRecall` lần đầu, lưu/đọc settings (theme, kích thước panel, panel ẩn/hiện).
@@ -221,7 +221,7 @@ Gotchas:
 
 Xong khi: mở app thấy connections đã import, kết nối PG/MySQL thật, duyệt tới cột/index, đóng mở tab, khởi động lại vẫn giữ tab và theme.
 
-Kết quả (đã làm, chờ anh test trong app rồi mới tick):
+Kết quả (đã làm, đã test tay):
 - State nằm ở package mới `internal/app` (không phải `view`), view chỉ đọc và gọi. Store mở ở `PathUserData`; lần chạy `mygo dev` đầu tiên import 4 connection thật từ `recall.db` và ghi `imported.recall`. Theme, layout và tabs lưu vào bảng `settings`, đọc lại sau khi khởi động (có test).
 - Outline gọi `children` cho mọi row đang hiện để biết row có mũi tên, nên `Children` thật sẽ kết nối mọi profile ngay frame đầu. View bọc lại (`treeChildren`): row đóng trả slice rỗng, row mở mới gọi app. Không có nó thì mở app là dial hết server.
 - Lọc là server-side (`listTables(filter)`), debounce 250ms, gen tăng ngay khi gõ; kết quả về muộn bị bỏ. Pin sort lên đầu danh sách anh em, không có section riêng (recall).
@@ -326,7 +326,7 @@ Còn thiếu so với spec / ghi chú:
 - `Copy as INSERT` ghi cột theo thứ tự result, không theo thứ tự anh kéo; không có ở kết quả của query.
 - Tooltip ô chỉ có khi text rộng hơn cột; tooltip header (tên + kiểu) chưa có test.
 
-### M5: Files, Quick open, Find in files (Files, Quick open, Find in files xong, đã test tay)
+### M5: Files, Quick open, Find in files ✅ (đã test tay)
 
 Phạm vi:
 - SqlFilesPanel: nhiều folder, filter glob, tạo / đổi tên / xoá / cut / copy / paste, mở trong Finder, binding datasource theo file. Panel kéo đổi độ rộng được (hiện đang cố định 240px).
@@ -352,7 +352,7 @@ Tiến độ M5 (commit `29634d4` fix race, `81e2cef` Files phần 1, `86fab9c` 
 - `internal/files`: `Scan` (đệ quy, depth 10, bỏ `IGNORE_DIRS`, thư mục trước), `Inside` (realpath, chặn symlink ra ngoài/vòng), `Match` (glob `*` `?` `{a,b}`, không phân biệt hoa thường). Test có symlink thoát folder, link vòng, link hỏng.
 - `app/sqlfiles.go`: folder lưu ở settings `sqlFiles` (`{folders, filter}`, theo real path nên cùng folder qua link chỉ mở một lần); quét ở goroutine, mỗi folder có `gen` để bỏ kết quả cũ; filter debounce 250ms. Outline khoá theo path (`ui.OutlineState[string]`); file trả `nil` con (không mũi tên), folder rỗng trả slice rỗng.
 - `view/filespanel.go`: panel **bên phải** workspace, rộng `UI.FilesW` (mặc định 240, lưu ở `layout`), nút toggle ở title bar (`UI.HideFiles`). Một click vào tên: file → `OpenFile`, folder → mở/đóng (Enter cũng vậy; mũi tên lên/xuống chỉ chọn). Không có badge connection và không có chấm "đang mở" (tab đã cho thấy).
-- Thao tác file: menu chuột phải theo loại dòng (folder gốc chỉ New/Paste/Reveal/Scan again/Close folder, không rename/xoá), `⌘X/⌘C/⌘V` khi panel có focus. `files/ops.go`: `Create` (O_EXCL, không ghi đè), `Rename` (kiểm đích trước vì rename POSIX đè im lặng; cho đổi hoa/thường), `Transfer` (từng entry, từ chối vào chính nó / trùng tên, EXDEV fallback copy+xoá, symlink copy thành symlink), `Trash` (Finder qua `osascript`, path truyền bằng argv; lỗi thì rơi về `~/.Trash`; **chưa thử Finder thật**), `Reveal` (`open -R`). `app/sqlfiles_ops.go`: dialog `FileDialog` (tên mới/đổi tên/xác nhận Trash), `repath` đưa tab (Path + Title), `fileVer`, binding, bookmark (`Store.RepathBookmarks`), folder đang mở, clipboard theo path mới; xoá thì tab giữ text thành bản nháp (Path rỗng), bỏ binding.
+- Thao tác file: menu chuột phải theo loại dòng (folder gốc chỉ New/Paste/Reveal/Scan again/Close folder, không rename/xoá), `⌘X/⌘C/⌘V` khi panel có focus. `files/ops.go`: `Create` (O_EXCL, không ghi đè), `Rename` (kiểm đích trước vì rename POSIX đè im lặng; cho đổi hoa/thường), `Transfer` (từng entry, từ chối vào chính nó / trùng tên, EXDEV fallback copy+xoá, symlink copy thành symlink), `Trash` (Finder qua `osascript`, path truyền bằng argv; lỗi thì rơi về `~/.Trash`; **chưa thử Finder thật**), `Reveal` (`open -R`). `app/sqlfiles_ops.go`: dialog `FileDialog` (tên mới/đổi tên/xác nhận Trash), `repath` đưa tab (Path + Title), `fileVer`, binding, bookmark (`Store.RepathBookmarks`), folder đang mở, clipboard theo path mới; xoá (file hoặc folder chứa nó) thì đóng tab luôn, kể cả tab đang sửa dở, không hỏi và không vào stack ⌘⇧T (anh chốt 2026-11-19); bỏ binding.
 - Test: `files/scan_test.go`, `files/ops_test.go`, `app/sqlfiles_test.go` (rename folder kéo theo tab/bookmark/binding, xoá, dán cut/copy), `store` (`TestRepathBookmarks`), `view/filespanel_test.go` (bố cục, click folder/file, chọn dòng, menu, rename qua dialog, khoảng cách island, chiều kéo divider).
 
 Gotchas học được (đừng lặp lại):
@@ -389,7 +389,7 @@ Kết quả phần phím tắt (2026-11-17; đã test tay):
 - Explain viewer (`view/plan.go`; đã test tay): Canvas | Tree | Raw như recall, mở Canvas nếu parser ra node, Raw nếu không. Canvas: thẻ node (icon theo loại, thanh nhiệt, `×n` khi rows thực tế lệch ≥2 lần), cạnh gấp khúc dày theo rows, zoom 50–160% bằng nút (chưa có cuộn chuột/pinch), kéo để pan, Fit; inspector mở sẵn ở node nóng nhất như recall (node đầu tiên nếu bằng nhau), bấm node khác để đổi. `RunView.Parsed` parse một lần khi plan về. Explain đang chạy thì nút Run thành Stop (⌘↵ cũng dừng) và huỷ được qua ctx riêng; dừng xong pane ghi "Explain stopped", kết quả về muộn bị `planGen` bỏ. Hit-test dưới `Scale` do mygo lo; kích thước viewport đọc trong `Draw` để Fit.
 - Giao diện: font đã có; UI size (recall: 80–150%, bước 5, `c.SetZoom`, stepper trong Settings, không có phím tắt) lưu ở settings `scale`. Count của table tab chuyển vào status bar thành `đã-tải/tổng rows` (`N+` bấm để đếm, như recall); nút Export là icon (đã test tay).
 
-### M7: Redis
+### M7: Redis ✅ (đã test tay)
 
 Phạm vi: profile Redis (default db), key list (SCAN theo trang, kèm TYPE + TTL), xem/sửa string và hash (đổi tên field, only-if-absent), TTL, xoá key, new key, console (đọc tự do, ghi phải xác nhận).
 
@@ -400,7 +400,7 @@ Gotchas:
 - Key/value nhị phân: hiển thị UTF-8 nếu hợp lệ, không thì base64; key nhị phân vẫn thao tác được.
 - `parseCommandLine` (quote) và allowlist lệnh đọc phải port kèm test.
 
-Kết quả M7 (2026-11-18; **chưa test tay trong app**, test tự động xanh với Redis thật):
+Kết quả M7 (2026-11-18; đã test tay, test tự động xanh với Redis thật):
 - `internal/redis`: `Pool` một client go-redis v9 cho mỗi (connection, db), RESP2; `bytes.go` (UTF-8 hợp lệ thì chữ, không thì nhãn `\xNN` + `Binary`, key nhị phân vẫn thao tác được vì `Data` là byte gốc), `safety.go` (allowlist đọc của recall, `ParseCommandLine`, lệnh chiếm kết nối bị từ chối), `ops.go` (SCAN + TYPE/TTL, string đọc tối đa 1 MiB rồi chỉ đọc, HSCAN, SetString/HashSet với `onlyIfAbsent` và TTL `keep` = PTTL rồi PEXPIRE cùng MULTI, UNLINK, ListDatabases từ `CONFIG GET databases` + `INFO keyspace`, `Execute` hỏi xác nhận lệnh ngoài allowlist), `format.go` (`FormatTTL`, `FormatReply` kiểu redis-cli).
 - Kết nối: dialog thêm loại Redis (host, port, user để trống được, mật khẩu keychain, database mặc định, TLS, timeout); `connect.go` mở qua `rd.Open`; sidebar liệt kê `db0…` kèm số key (`KindRedisDB`, lá), bấm mở tab `ModeRedis` (`Tab.Database` là số db, tên tab `<connection> · dbN`, lưu và khôi phục như tab khác). Tab mới/“New query tab” trên connection Redis mở console của db mặc định; sidebar tự chọn dòng db khi mở/chuyển tab.
 - Tab Redis (`app/redistab.go`, `view/redis.go`): danh sách key (pattern, SCAN theo trang như recall: tối đa 20 vòng cho tới 200 key, Load more), giá trị bên phải: string (sửa/Revert/Save, giữ TTL), hash (thêm, sửa, đổi tên field, xoá, copy giá trị, Load more), set (SSCAN theo trang; thêm, thay member = SREM + SADD cùng MULTI, xoá, copy; member nhị phân chỉ xoá/copy), list (LRANGE theo trang, theo index; thêm đầu/cuối, sửa bằng LSET, xoá = LSET marker + LREM trong MULTI; WATCH từ chối nếu phần tử tại index đã đổi), TTL (đếm ngược cục bộ, đặt giây hoặc No expiry), xoá key (hỏi lại), New key (không ghi đè key đã có), console (history ↑/↓, lệnh ghi hỏi “Run anyway”). New key có cả kiểu set và list. Nút copy đổi thành dấu tick 1,5 giây. Kiểu khác (zset, stream) hiện “chưa hỗ trợ”, console vẫn dùng được.

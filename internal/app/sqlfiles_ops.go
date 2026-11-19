@@ -173,19 +173,18 @@ func (a *App) trash(path string) {
 }
 
 // forget lets go of everything that pointed at a path now in the Trash, or
-// under it. A tab that had the file keeps its text and becomes a draft:
-// the file is no longer there to save to.
+// under it. Tabs that had the file close without asking, unsaved edits and
+// all, and tabs closed earlier leave the reopen stack: the file they would
+// reopen is gone.
 func (a *App) forget(path string) {
 	under := func(p string) bool { _, ok := movedPath(p, path, ""); return ok }
-	for i := range a.tabs.Items {
-		t := &a.tabs.Items[i]
-		if t.Path != "" && under(t.Path) {
-			delete(a.fileVer, t.Path)
-			a.cancelAutosave(t.ID)
-			delete(a.saveBlocked, t.ID)
-			t.Path, t.SavedSQL = "", ""
+	for i := len(a.tabs.Items) - 1; i >= 0; i-- {
+		if p := a.tabs.Items[i].Path; p != "" && under(p) {
+			delete(a.fileVer, p)
+			a.dropTab(i)
 		}
 	}
+	a.tabs.Closed = slices.DeleteFunc(a.tabs.Closed, func(t Tab) bool { return t.Path != "" && under(t.Path) })
 	before := len(a.bindings)
 	a.bindings = slices.DeleteFunc(a.bindings, func(b binding) bool { return under(b.Path) })
 	if len(a.bindings) != before {

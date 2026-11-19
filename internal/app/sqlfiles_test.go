@@ -231,9 +231,9 @@ func TestRenameRefusals(t *testing.T) {
 	}
 }
 
-// A deleted file goes to the Trash; a tab that had it keeps its text as a
-// draft, and the binding is let go.
-func TestDeleteDetachesTab(t *testing.T) {
+// A deleted file goes to the Trash and its tab closes, unsaved edits and
+// all; the binding is let go.
+func TestDeleteClosesTab(t *testing.T) {
 	a, run, root := fileWorld(t)
 	var trashed []string
 	old := files.Trash
@@ -241,22 +241,49 @@ func TestDeleteDetachesTab(t *testing.T) {
 	t.Cleanup(func() { files.Trash = old })
 
 	p := filepath.Join(root, "a.sql")
+	a.tabs.Items[0].SQL = "select 2" // dirty
 	a.RequestDelete(p)
 	a.SubmitFileDialog()
 	run() // trash, then the rescan
 	if len(trashed) != 1 || trashed[0] != p {
 		t.Fatalf("trashed %v", trashed)
 	}
-	for _, tb := range a.tabs.Items {
-		if tb.ID == "t0" && (tb.Path != "" || tb.SQL != "select 1") {
-			t.Errorf("tab: %+v", tb)
-		}
+	if _, ok := a.TabByID("t0"); ok {
+		t.Error("the tab stayed open")
+	}
+	if a.dlg.Close.Open {
+		t.Error("closing asked about the unsaved edits")
 	}
 	if _, ok := a.BindingFor(p); ok {
 		t.Error("the binding stayed")
 	}
 	if a.FileNode(p) != nil {
 		t.Error("the file is still in the tree")
+	}
+}
+
+// Deleting a folder closes the tabs of every file under it, and none of them
+// comes back with Reopen, not even one closed before the delete.
+func TestDeleteFolderClosesTabs(t *testing.T) {
+	a, run, root := fileWorld(t)
+	old := files.Trash
+	files.Trash = os.RemoveAll
+	t.Cleanup(func() { files.Trash = old })
+
+	a.Activate("t2")
+	a.forceClose("t1") // closed before the delete, on the reopen stack
+	a.RequestDelete(filepath.Join(root, "sub"))
+	a.SubmitFileDialog()
+	run()
+	if len(a.tabs.Items) != 1 || a.tabs.Items[0].ID != "t0" {
+		t.Fatalf("tabs: %+v", a.tabs.Items)
+	}
+	if a.tabs.Active != 0 {
+		t.Errorf("active %d", a.tabs.Active)
+	}
+	a.ReopenClosedTab()
+	if len(a.tabs.Items) != 1 {
+		t.Errorf("reopen brought back a deleted file: %+v", a.tabs.Items)
 	}
 }
 

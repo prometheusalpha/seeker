@@ -120,6 +120,32 @@ func TestRedisTab(t *testing.T) {
 	if tt.HasText(prefix + "hash") {
 		t.Errorf("the deleted key still shows: %v", tt.Texts())
 	}
+
+	// A set made from the form lists its members; a member is replaced and
+	// another removed.
+	setName := prefix + "set"
+	t.Cleanup(func() { redis.DeleteKeys(context.Background(), c, []redis.Bytes{redis.TextBytes(setName)}) })
+	core.OpenRedisNewKey(tab)
+	rt.New.Key, rt.New.Type, rt.New.Field = setName, "set", "m1"
+	core.RedisCreate(tab)
+	p.waitUntil(t, tt, "the set", func() bool {
+		return rt.Value.V != nil && rt.Value.V.Kind == redis.KindSet && len(rt.Value.Set) == 1
+	})
+	p.frame(tt)
+	if !tt.HasText("m1") {
+		t.Fatalf("set rows: %v", tt.Texts())
+	}
+	prevM := redis.TextBytes("m1")
+	core.RedisSaveMember(tab, redis.TextBytes("m2"), &prevM)
+	p.waitUntil(t, tt, "the replace", func() bool {
+		return !rt.Value.Busy && len(rt.Value.Set) == 1 && rt.Value.Set[0].Text == "m2"
+	})
+	core.RedisSaveMember(tab, redis.TextBytes("m3"), nil)
+	p.waitUntil(t, tt, "the add", func() bool { return !rt.Value.Busy && len(rt.Value.Set) == 2 })
+	core.RedisRemoveMember(tab, redis.TextBytes("m2"))
+	p.waitUntil(t, tt, "the remove", func() bool {
+		return !rt.Value.Busy && len(rt.Value.Set) == 1 && rt.Value.Set[0].Text == "m3"
+	})
 	_ = app.ModeRedis
 }
 

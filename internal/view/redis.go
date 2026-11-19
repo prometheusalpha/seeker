@@ -18,6 +18,7 @@ import (
 type redisUI struct {
 	keys ui.ListState
 	hash ui.ListState
+	set  ui.ListState
 	sel  int
 	// copied is the field row whose copy button shows a tick until
 	// copiedAt plus copyTick.
@@ -193,6 +194,8 @@ func (s *App) redisValue(c *ui.Context, id string, rt *app.RedisTab, st *redisUI
 		s.redisString(c, id, v)
 	case v.V.Kind == redis.KindHash:
 		s.redisHash(c, id, v, st)
+	case v.V.Kind == redis.KindSet:
+		s.redisSet(c, id, v, st)
 	default:
 		s.resultsNote(c, v.V.RedisType+" values are not shown here yet. The console below can read and change them.")
 	}
@@ -334,16 +337,7 @@ func (s *App) redisFieldRow(c *ui.Context, id string, v *app.RedisValueState, st
 	ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center).Gap(10).Padding(0, 10).Children(func() {
 		s.tableFont(ui.Text(c, e.Field.Text), -0.5).SingleLine().Width(160).Shrink(0).Tooltip(e.Field.Text)
 		s.tableFont(ui.Text(c, e.Value.Text), -0.5).SingleLine().Grow(1).TextColor(t.TextMuted).Tooltip(e.Value.Text)
-		icon := icons.Copy
-		if left := copyTick - time.Since(st.copiedAt); st.copied == i && left > 0 {
-			icon = icons.Check
-			c.After(left)
-		}
-		if fieldButton(c, "rf-copy-"+strconv.Itoa(i), icon, "Copy value", false).Clicked() {
-			c.WriteClipboard(e.Value.Text)
-			st.copied, st.copiedAt = i, time.Now()
-			s.core.Toast("Value copied")
-		}
+		s.copyButton(c, st, i, e.Value.Text, "Value copied")
 		// A binary field or value cannot be typed back, so it only deletes.
 		if !e.Field.Binary && !e.Value.Binary {
 			if fieldButton(c, "rf-edit-"+strconv.Itoa(i), icons.Pencil, "Edit field", v.Busy).Clicked() {
@@ -354,6 +348,105 @@ func (s *App) redisFieldRow(c *ui.Context, id string, v *app.RedisValueState, st
 			s.core.RedisRemoveField(id, e.Field)
 		}
 	})
+}
+
+// redisSet lists a set's members. A set has no order and no in-place edit:
+// changing a member replaces it, in one transaction.
+func (s *App) redisSet(c *ui.Context, id string, v *app.RedisValueState, st *redisUI) {
+	t := c.Theme()
+	ui.Row(c).Height(34).FillWidth().AlignItems(ui.Center).Padding(0, 10).Gap(8).Shrink(0).Children(func() {
+		ui.Text(c, strconv.FormatInt(v.V.SetLen, 10)+" members").FontSize(11).TextColor(t.TextMuted).SingleLine()
+		ui.Spacer(c)
+		if ui.Button(c.Key("rset-add"), "Add member").Height(24).Disabled(v.Busy).Clicked() {
+			v.AddField, v.EditField, v.FieldName = true, -1, ""
+		}
+	})
+	ui.Divider(c)
+	if v.AddField {
+		s.redisMemberEditor(c, id, v, nil)
+		ui.Divider(c)
+	}
+	ui.List(c, &st.set, len(v.Set), func(i int) {
+		m := v.Set[i]
+		if v.EditField == i {
+			s.redisMemberEditor(c, id, v, &m)
+			return
+		}
+		s.redisMemberRow(c, id, v, st, i, m)
+	}).Grow(1).FillWidth()
+	if v.SetCursor != "0" && v.SetCursor != "" {
+		ui.Divider(c)
+		ui.Row(c).Height(30).FillWidth().AlignItems(ui.Center).Padding(0, 10).Shrink(0).Children(func() {
+			ui.Text(c, strconv.Itoa(len(v.Set))+" of "+strconv.FormatInt(v.V.SetLen, 10)).FontSize(11).TextColor(t.TextMuted)
+			ui.Spacer(c)
+			if v.SetLoading {
+				ui.Spinner(c).FontSize(12).Label("Loading members")
+			} else if ui.Button(c.Key("rset-more"), "Load more").Height(22).Clicked() {
+				s.core.RedisMoreMembers(id)
+			}
+		})
+	}
+}
+
+func (s *App) redisMemberRow(c *ui.Context, id string, v *app.RedisValueState, st *redisUI, i int, m redis.Bytes) {
+	ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center).Gap(10).Padding(0, 10).Children(func() {
+		s.tableFont(ui.Text(c, m.Text), -0.5).SingleLine().Grow(1).Tooltip(m.Text)
+		s.copyButton(c, st, i, m.Text, "Member copied")
+		// A binary member cannot be typed back, so it only deletes.
+		if !m.Binary {
+			if fieldButton(c, "rm-edit-"+strconv.Itoa(i), icons.Pencil, "Edit member", v.Busy).Clicked() {
+				v.EditField, v.AddField, v.FieldName = i, false, m.Text
+			}
+		}
+		if fieldButton(c, "rm-del-"+strconv.Itoa(i), icons.Trash, "Delete member", v.Busy).Clicked() {
+			s.core.RedisRemoveMember(id, m)
+		}
+	})
+}
+
+// redisMemberEditor edits a member in place, or adds one when m is nil.
+func (s *App) redisMemberEditor(c *ui.Context, id string, v *app.RedisValueState, m *redis.Bytes) {
+	ui.Row(c).FillWidth().Height(34).AlignItems(ui.Center).Gap(8).Padding(0, 10).Children(func() {
+		in := ui.TextInput(c.Key("rm-name"), &v.FieldName).Placeholder("Member").Label("Member").Grow(1).Height(26).Padding(0, 8)
+		if m == nil {
+			in.Focus()
+		}
+		save := func() {
+			if v.FieldName == "" {
+				return
+			}
+			var prev *redis.Bytes
+			if m != nil && m.Text != v.FieldName {
+				p := *m
+				prev = &p
+			}
+			s.core.RedisSaveMember(id, redis.TextBytes(v.FieldName), prev)
+		}
+		if in.Submitted() {
+			save()
+		}
+		if iconButton(c, icons.Check, "Save member").Clicked() {
+			save()
+		}
+		if iconButton(c, icons.X, "Cancel").Clicked() {
+			v.EditField, v.AddField = -1, false
+		}
+	})
+}
+
+// copyButton copies text and shows a tick on row i for a moment, with a
+// toast; the hash and set rows share it.
+func (s *App) copyButton(c *ui.Context, st *redisUI, i int, text, toast string) {
+	icon := icons.Copy
+	if left := copyTick - time.Since(st.copiedAt); st.copied == i && left > 0 {
+		icon = icons.Check
+		c.After(left)
+	}
+	if fieldButton(c, "copy-"+strconv.Itoa(i), icon, "Copy value", false).Clicked() {
+		c.WriteClipboard(text)
+		st.copied, st.copiedAt = i, time.Now()
+		s.core.Toast(toast)
+	}
 }
 
 // fieldButton is a row's small icon button; it takes a hover background so
@@ -494,12 +587,17 @@ func (s *App) redisNewKey(c *ui.Context, id string, rt *app.RedisTab) {
 			ui.Field(c, "Type", func() {
 				ui.Select(c, &n.Type, app.RedisKeyTypes).FillWidth().Label("Type")
 			})
-			if n.Type == "hash" {
+			switch n.Type {
+			case "hash":
 				ui.Field(c, "First field", func() { ui.TextInput(c.Key("rnk-field"), &n.Field) })
+			case "set":
+				ui.Field(c, "First member", func() { ui.TextInput(c.Key("rnk-field"), &n.Field) })
 			}
-			ui.Field(c, "Value", func() {
-				ui.TextArea(c.Key("rnk-value"), &n.Value).Height(90)
-			})
+			if n.Type != "set" {
+				ui.Field(c, "Value", func() {
+					ui.TextArea(c.Key("rnk-value"), &n.Value).Height(90)
+				})
+			}
 			ui.Field(c, "TTL", func() {
 				ui.TextInput(c.Key("rnk-ttl"), &n.TTL).Placeholder("Seconds; blank for no expiry")
 			})

@@ -53,12 +53,19 @@ type HashPage struct {
 	Cursor  string
 }
 
+// SetPage is one SSCAN batch; Cursor is "0" when every member was read.
+type SetPage struct {
+	Members []Bytes
+	Cursor  string
+}
+
 // Kind is what a key holds, as far as this build can show it.
 type Kind string
 
 const (
 	KindString      Kind = "string"
 	KindHash        Kind = "hash"
+	KindSet         Kind = "set"
 	KindUnsupported Kind = "unsupported"
 )
 
@@ -77,6 +84,10 @@ type Value struct {
 	// Hash: HashLen is HLEN and First the first page.
 	HashLen int64
 	First   HashPage
+
+	// Set: SetLen is SCARD and FirstSet the first page.
+	SetLen   int64
+	FirstSet SetPage
 
 	// RedisType is the server's name for an unsupported type.
 	RedisType string
@@ -212,6 +223,16 @@ func GetValue(ctx context.Context, c *goredis.Client, key Bytes) (*Value, error)
 			return nil, err
 		}
 		return &Value{Kind: KindHash, TTL: ttl, HashLen: n, First: first}, nil
+	case "set":
+		n, err := do(ctx, c, "SCARD", k).Int64()
+		if err != nil {
+			return nil, err
+		}
+		first, err := SetScan(ctx, c, key, "0")
+		if err != nil {
+			return nil, err
+		}
+		return &Value{Kind: KindSet, TTL: ttl, SetLen: n, FirstSet: first}, nil
 	}
 	return &Value{Kind: KindUnsupported, TTL: ttl, RedisType: typ}, nil
 }
@@ -231,6 +252,24 @@ func HashScan(ctx context.Context, c *goredis.Client, key Bytes, cursor string) 
 		page.Entries = append(page.Entries, HashEntry{
 			Field: NewBytes([]byte(str(flat[i]))), Value: NewBytes([]byte(str(flat[i+1]))),
 		})
+	}
+	return page, nil
+}
+
+// SetScan reads one SSCAN batch. A set has no order, and SSCAN may return a
+// member twice across batches, which the caller drops.
+func SetScan(ctx context.Context, c *goredis.Client, key Bytes, cursor string) (SetPage, error) {
+	res, err := do(ctx, c, "SSCAN", string(key.Data), cursor, "COUNT", hashPageCount).Slice()
+	if err != nil {
+		return SetPage{}, err
+	}
+	if len(res) != 2 {
+		return SetPage{}, errors.New("unexpected SSCAN reply")
+	}
+	flat, _ := res[1].([]any)
+	page := SetPage{Cursor: str(res[0])}
+	for _, m := range flat {
+		page.Members = append(page.Members, NewBytes([]byte(str(m))))
 	}
 	return page, nil
 }
@@ -304,6 +343,41 @@ func HashSet(ctx context.Context, c *goredis.Client, key, field Bytes, value str
 // HashDelete removes one field.
 func HashDelete(ctx context.Context, c *goredis.Client, key, field Bytes) error {
 	return do(ctx, c, "HDEL", string(key.Data), string(field.Data)).Err()
+}
+
+// SetAdd adds one member. Previous replaces: the old member goes in the same
+// transaction, since a set cannot change a member in place. OnlyIfAbsent
+// refuses when the key already exists.
+func SetAdd(ctx context.Context, c *goredis.Client, key, member Bytes, previous *Bytes, ttl TTLChange, onlyIfAbsent bool) (bool, error) {
+	k := string(key.Data)
+	if onlyIfAbsent {
+		n, err := do(ctx, c, "EXISTS", k).Int64()
+		if err != nil {
+			return false, err
+		}
+		if n > 0 {
+			return false, nil
+		}
+	}
+	_, err := c.TxPipelined(ctx, func(p goredis.Pipeliner) error {
+		if previous != nil && string(previous.Data) != string(member.Data) {
+			do(ctx, p, "SREM", k, string(previous.Data))
+		}
+		do(ctx, p, "SADD", k, string(member.Data))
+		switch ttl.Mode {
+		case TTLPersist:
+			do(ctx, p, "PERSIST", k)
+		case TTLSeconds:
+			do(ctx, p, "EXPIRE", k, ttl.Seconds)
+		}
+		return nil
+	})
+	return err == nil, err
+}
+
+// SetRemove removes one member.
+func SetRemove(ctx context.Context, c *goredis.Client, key, member Bytes) error {
+	return do(ctx, c, "SREM", string(key.Data), string(member.Data)).Err()
 }
 
 // DeleteKeys removes keys with UNLINK, which frees memory off the server's

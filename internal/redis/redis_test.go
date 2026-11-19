@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -157,6 +158,35 @@ func TestLive(t *testing.T) {
 		t.Errorf("hash after rename: %v", got)
 	}
 	HashDelete(ctx, c, hash, TextBytes("b"))
+
+	// A set: create, add, replace a member, remove one.
+	set := TextBytes(prefix + "set")
+	t.Cleanup(func() { DeleteKeys(context.Background(), c, []Bytes{set}) })
+	if ok, err := SetAdd(ctx, c, set, TextBytes("a"), nil, TTLChange{}, true); !ok || err != nil {
+		t.Fatalf("set create: %v %v", ok, err)
+	}
+	if ok, _ := SetAdd(ctx, c, set, TextBytes("z"), nil, TTLChange{}, true); ok {
+		t.Error("only-if-absent added to a set that exists")
+	}
+	SetAdd(ctx, c, set, TextBytes("b"), nil, TTLChange{}, false)
+	prevMember := TextBytes("a")
+	SetAdd(ctx, c, set, TextBytes("c"), &prevMember, TTLChange{}, false)
+	v, err = GetValue(ctx, c, set)
+	if err != nil || v == nil || v.Kind != KindSet || v.SetLen != 2 {
+		t.Fatalf("set %+v, %v", v, err)
+	}
+	members := []string{}
+	for _, m := range v.FirstSet.Members {
+		members = append(members, m.Text)
+	}
+	slices.Sort(members)
+	if !reflect.DeepEqual(members, []string{"b", "c"}) {
+		t.Errorf("set after replace: %v", members)
+	}
+	SetRemove(ctx, c, set, TextBytes("b"))
+	if v, _ = GetValue(ctx, c, set); v == nil || v.SetLen != 1 {
+		t.Errorf("set after remove: %+v", v)
+	}
 
 	// The scan finds them, with type and TTL.
 	page, err := ScanKeys(ctx, c, "0", prefix+"*", 1000)

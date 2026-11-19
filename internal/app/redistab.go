@@ -74,6 +74,10 @@ type RedisValueState struct {
 	HashCursor  string
 	HashLoading bool
 
+	Set        []redis.Bytes
+	SetCursor  string
+	SetLoading bool
+
 	// Draft is the string being edited; it starts as the stored text and
 	// again after every read.
 	Draft string
@@ -83,7 +87,8 @@ type RedisValueState struct {
 	TTLText    string
 
 	// Field editing: EditField is the row being edited (a rename or a new
-	// value), -1 for none; AddField opens a blank row at the end.
+	// value), -1 for none; AddField opens a blank row at the end. A set uses
+	// the same drafts, with FieldName as the member and no FieldValue.
 	EditField  int
 	FieldName  string
 	FieldValue string
@@ -132,7 +137,7 @@ type RedisConsole struct {
 type RedisNewKey struct {
 	Open  bool
 	Key   string
-	Type  string // "string" or "hash"
+	Type  string // "string", "hash" or "set"
 	Value string
 	Field string
 	TTL   string // seconds; blank for none
@@ -142,7 +147,7 @@ type RedisNewKey struct {
 
 // RedisKeyTypes is what the new-key form offers; the browser shows other
 // types but cannot write them.
-var RedisKeyTypes = []string{"string", "hash"}
+var RedisKeyTypes = []string{"string", "hash", "set"}
 
 // RedisOf is a Redis tab's state, made, and its key list scanned, the first
 // time the tab shows. Nil for a tab that is not Redis.
@@ -320,6 +325,9 @@ func (a *App) RedisReload(id string) {
 		if v.Kind == redis.KindHash {
 			rt.Value.Hash, rt.Value.HashCursor = v.First.Entries, v.First.Cursor
 		}
+		if v.Kind == redis.KindSet {
+			rt.Value.Set, rt.Value.SetCursor = v.FirstSet.Members, v.FirstSet.Cursor
+		}
 		// The list's row follows what the server says now.
 		for i := range rt.Keys {
 			if rt.Keys[i].Key.ID() == key.ID() {
@@ -416,6 +424,55 @@ func (a *App) RedisMoreFields(id string) {
 	})
 }
 
+// RedisSaveMember adds a member to the chosen set; previous replaces it.
+func (a *App) RedisSaveMember(id string, member redis.Bytes, previous *redis.Bytes) {
+	a.redisWrite(id, func(ctx context.Context, c *goredis.Client, key redis.Bytes) error {
+		_, err := redis.SetAdd(ctx, c, key, member, previous, keepTTL, false)
+		return err
+	})
+}
+
+// RedisRemoveMember removes one member of the chosen set.
+func (a *App) RedisRemoveMember(id string, member redis.Bytes) {
+	a.redisWrite(id, func(ctx context.Context, c *goredis.Client, key redis.Bytes) error {
+		return redis.SetRemove(ctx, c, key, member)
+	})
+}
+
+// RedisMoreMembers reads the next page of the chosen set.
+func (a *App) RedisMoreMembers(id string) {
+	rt := a.redisTabs[id]
+	if rt == nil || rt.Sel == nil || rt.Value.SetLoading || rt.Value.SetCursor == "0" || rt.Value.SetCursor == "" {
+		return
+	}
+	rt.Value.SetLoading = true
+	key, cursor, gen := rt.Sel.Key, rt.Value.SetCursor, rt.Value.gen
+	var page redis.SetPage
+	a.redisCall(rt, func(ctx context.Context, c *goredis.Client) (err error) {
+		page, err = redis.SetScan(ctx, c, key, cursor)
+		return err
+	}, func(err error) {
+		if rt.Value.gen != gen {
+			return
+		}
+		rt.Value.SetLoading = false
+		if err != nil {
+			a.toast(shortError(err))
+			return
+		}
+		seen := map[string]bool{}
+		for _, m := range rt.Value.Set {
+			seen[m.ID()] = true
+		}
+		for _, m := range page.Members {
+			if !seen[m.ID()] {
+				rt.Value.Set = append(rt.Value.Set, m)
+			}
+		}
+		rt.Value.SetCursor = page.Cursor
+	})
+}
+
 // RedisSetTTL gives the chosen key a lifetime of seconds, or none.
 func (a *App) RedisSetTTL(id string, change redis.TTLChange) {
 	a.redisWrite(id, func(ctx context.Context, c *goredis.Client, key redis.Bytes) error {
@@ -488,6 +545,9 @@ func (a *App) RedisCreate(id string) {
 	case n.Type == "hash" && n.Field == "":
 		n.Err = "Enter the first field's name."
 		return
+	case n.Type == "set" && n.Field == "":
+		n.Err = "Enter the first member."
+		return
 	case secs != "":
 		v, err := strconv.ParseInt(secs, 10, 64)
 		if err != nil || v <= 0 {
@@ -500,9 +560,12 @@ func (a *App) RedisCreate(id string) {
 	key, typ, value, field := redis.TextBytes(name), n.Type, n.Value, redis.TextBytes(n.Field)
 	var created bool
 	a.redisCall(rt, func(ctx context.Context, c *goredis.Client) (err error) {
-		if typ == "hash" {
+		switch typ {
+		case "hash":
 			created, err = redis.HashSet(ctx, c, key, field, value, nil, ttl, true)
-		} else {
+		case "set":
+			created, err = redis.SetAdd(ctx, c, key, field, nil, ttl, true)
+		default:
 			created, err = redis.SetString(ctx, c, key, value, ttl, true)
 		}
 		return err

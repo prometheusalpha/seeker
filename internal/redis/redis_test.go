@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net"
 	"os"
 	"reflect"
@@ -186,6 +187,46 @@ func TestLive(t *testing.T) {
 	SetRemove(ctx, c, set, TextBytes("b"))
 	if v, _ = GetValue(ctx, c, set); v == nil || v.SetLen != 1 {
 		t.Errorf("set after remove: %+v", v)
+	}
+
+	// A list: push both ends, replace by index, remove the later of two
+	// duplicates, and refuse an edit whose element moved.
+	list := TextBytes(prefix + "list")
+	t.Cleanup(func() { DeleteKeys(context.Background(), c, []Bytes{list}) })
+	if ok, err := ListPush(ctx, c, list, "a", false, TTLChange{}, true); !ok || err != nil {
+		t.Fatalf("list create: %v %v", ok, err)
+	}
+	if ok, _ := ListPush(ctx, c, list, "z", false, TTLChange{}, true); ok {
+		t.Error("only-if-absent pushed on a list that exists")
+	}
+	ListPush(ctx, c, list, "b", false, TTLChange{}, false)
+	ListPush(ctx, c, list, "a", false, TTLChange{}, false)
+	ListPush(ctx, c, list, "h", true, TTLChange{}, false)
+	items := func() []string {
+		v, err := GetValue(ctx, c, list)
+		if err != nil || v == nil || v.Kind != KindList {
+			t.Fatalf("list %+v, %v", v, err)
+		}
+		got := []string{}
+		for _, m := range v.FirstList.Items {
+			got = append(got, m.Text)
+		}
+		return got
+	}
+	if got := items(); !reflect.DeepEqual(got, []string{"h", "a", "b", "a"}) {
+		t.Fatalf("list after pushes: %v", got)
+	}
+	if err := ListSet(ctx, c, list, 2, TextBytes("b"), "B"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ListRemoveAt(ctx, c, list, 3, TextBytes("a")); err != nil {
+		t.Fatal(err)
+	}
+	if got := items(); !reflect.DeepEqual(got, []string{"h", "a", "B"}) {
+		t.Errorf("list after set and remove: %v", got)
+	}
+	if err := ListSet(ctx, c, list, 0, TextBytes("not-h"), "x"); !errors.Is(err, ErrListChanged) {
+		t.Errorf("a stale edit gave %v", err)
 	}
 
 	// The scan finds them, with type and TTL.

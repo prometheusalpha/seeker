@@ -146,6 +146,26 @@ func TestRedisTab(t *testing.T) {
 	p.waitUntil(t, tt, "the remove", func() bool {
 		return !rt.Value.Busy && len(rt.Value.Set) == 1 && rt.Value.Set[0].Text == "m3"
 	})
+
+	// A list made from the form lists its elements by index.
+	listName := prefix + "list"
+	t.Cleanup(func() { redis.DeleteKeys(context.Background(), c, []redis.Bytes{redis.TextBytes(listName)}) })
+	core.OpenRedisNewKey(tab)
+	rt.New.Key, rt.New.Type, rt.New.Value = listName, "list", "e0"
+	core.RedisCreate(tab)
+	p.waitUntil(t, tt, "the list", func() bool {
+		return rt.Value.V != nil && rt.Value.V.Kind == redis.KindList && len(rt.Value.List) == 1
+	})
+	core.RedisAddItem(tab, "e1", false)
+	p.waitUntil(t, tt, "the push", func() bool { return !rt.Value.Busy && len(rt.Value.List) == 2 })
+	p.frame(tt)
+	if !tt.HasText("e0") || !tt.HasText("e1") {
+		t.Fatalf("list rows: %v", tt.Texts())
+	}
+	core.RedisRemoveItem(tab, 0, rt.Value.List[0])
+	p.waitUntil(t, tt, "the remove", func() bool {
+		return !rt.Value.Busy && len(rt.Value.List) == 1 && rt.Value.List[0].Text == "e1"
+	})
 	_ = app.ModeRedis
 }
 

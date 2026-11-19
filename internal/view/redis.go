@@ -19,6 +19,7 @@ type redisUI struct {
 	keys ui.ListState
 	hash ui.ListState
 	set  ui.ListState
+	list ui.ListState
 	sel  int
 	// copied is the field row whose copy button shows a tick until
 	// copiedAt plus copyTick.
@@ -196,6 +197,8 @@ func (s *App) redisValue(c *ui.Context, id string, rt *app.RedisTab, st *redisUI
 		s.redisHash(c, id, v, st)
 	case v.V.Kind == redis.KindSet:
 		s.redisSet(c, id, v, st)
+	case v.V.Kind == redis.KindList:
+		s.redisList(c, id, v, st)
 	default:
 		s.resultsNote(c, v.V.RedisType+" values are not shown here yet. The console below can read and change them.")
 	}
@@ -434,6 +437,92 @@ func (s *App) redisMemberEditor(c *ui.Context, id string, v *app.RedisValueState
 	})
 }
 
+// redisList lists a list's elements by index. Elements are not unique, so
+// the edits name the index, and the backend refuses one whose element is no
+// longer what the pane showed.
+func (s *App) redisList(c *ui.Context, id string, v *app.RedisValueState, st *redisUI) {
+	t := c.Theme()
+	ui.Row(c).Height(34).FillWidth().AlignItems(ui.Center).Padding(0, 10).Gap(8).Shrink(0).Children(func() {
+		ui.Text(c, strconv.FormatInt(v.V.ListLen, 10)+" elements").FontSize(11).TextColor(t.TextMuted).SingleLine()
+		ui.Spacer(c)
+		if ui.Button(c.Key("rlist-head"), "Add to start").Height(24).Disabled(v.Busy).Clicked() {
+			v.AddField, v.AddHead, v.EditField, v.FieldName = true, true, -1, ""
+		}
+		if ui.Button(c.Key("rlist-tail"), "Add to end").Height(24).Disabled(v.Busy).Clicked() {
+			v.AddField, v.AddHead, v.EditField, v.FieldName = true, false, -1, ""
+		}
+	})
+	ui.Divider(c)
+	if v.AddField {
+		s.redisItemEditor(c, id, v, -1)
+		ui.Divider(c)
+	}
+	ui.List(c, &st.list, len(v.List), func(i int) {
+		if v.EditField == i {
+			s.redisItemEditor(c, id, v, i)
+			return
+		}
+		s.redisItemRow(c, id, v, st, i)
+	}).Grow(1).FillWidth()
+	if v.ListMore {
+		ui.Divider(c)
+		ui.Row(c).Height(30).FillWidth().AlignItems(ui.Center).Padding(0, 10).Shrink(0).Children(func() {
+			ui.Text(c, strconv.Itoa(len(v.List))+" of "+strconv.FormatInt(v.V.ListLen, 10)).FontSize(11).TextColor(t.TextMuted)
+			ui.Spacer(c)
+			if v.ListLoading {
+				ui.Spinner(c).FontSize(12).Label("Loading elements")
+			} else if ui.Button(c.Key("rlist-more"), "Load more").Height(22).Clicked() {
+				s.core.RedisMoreItems(id)
+			}
+		})
+	}
+}
+
+func (s *App) redisItemRow(c *ui.Context, id string, v *app.RedisValueState, st *redisUI, i int) {
+	t := c.Theme()
+	m := v.List[i]
+	ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center).Gap(10).Padding(0, 10).Children(func() {
+		s.tableFont(ui.Text(c, strconv.Itoa(i)), -0.5).SingleLine().Width(48).Shrink(0).TextColor(t.TextMuted)
+		s.tableFont(ui.Text(c, m.Text), -0.5).SingleLine().Grow(1).Tooltip(m.Text)
+		s.copyButton(c, st, i, m.Text, "Element copied")
+		// A binary element cannot be typed back, so it only deletes.
+		if !m.Binary {
+			if fieldButton(c, "ri-edit-"+strconv.Itoa(i), icons.Pencil, "Edit element", v.Busy).Clicked() {
+				v.EditField, v.AddField, v.FieldName = i, false, m.Text
+			}
+		}
+		if fieldButton(c, "ri-del-"+strconv.Itoa(i), icons.Trash, "Delete element", v.Busy).Clicked() {
+			s.core.RedisRemoveItem(id, i, m)
+		}
+	})
+}
+
+// redisItemEditor edits the element at index i, or adds one when i is -1.
+func (s *App) redisItemEditor(c *ui.Context, id string, v *app.RedisValueState, i int) {
+	ui.Row(c).FillWidth().Height(34).AlignItems(ui.Center).Gap(8).Padding(0, 10).Children(func() {
+		in := ui.TextInput(c.Key("ri-value"), &v.FieldName).Placeholder("Element").Label("Element").Grow(1).Height(26).Padding(0, 8)
+		if i < 0 {
+			in.Focus()
+		}
+		save := func() {
+			if i < 0 {
+				s.core.RedisAddItem(id, v.FieldName, v.AddHead)
+			} else {
+				s.core.RedisSaveItem(id, i, v.List[i], v.FieldName)
+			}
+		}
+		if in.Submitted() {
+			save()
+		}
+		if iconButton(c, icons.Check, "Save element").Clicked() {
+			save()
+		}
+		if iconButton(c, icons.X, "Cancel").Clicked() {
+			v.EditField, v.AddField = -1, false
+		}
+	})
+}
+
 // copyButton copies text and shows a tick on row i for a moment, with a
 // toast; the hash and set rows share it.
 func (s *App) copyButton(c *ui.Context, st *redisUI, i int, text, toast string) {
@@ -594,7 +683,11 @@ func (s *App) redisNewKey(c *ui.Context, id string, rt *app.RedisTab) {
 				ui.Field(c, "First member", func() { ui.TextInput(c.Key("rnk-field"), &n.Field) })
 			}
 			if n.Type != "set" {
-				ui.Field(c, "Value", func() {
+				label := "Value"
+				if n.Type == "list" {
+					label = "First element"
+				}
+				ui.Field(c, label, func() {
 					ui.TextArea(c.Key("rnk-value"), &n.Value).Height(90)
 				})
 			}

@@ -2,6 +2,8 @@ package redis
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -16,6 +18,7 @@ const (
 	// its prefix, read-only.
 	StringReadCap = 1024 * 1024
 	hashPageCount = 200
+	listPageCount = 200
 	deleteChunk   = 500
 )
 
@@ -59,6 +62,13 @@ type SetPage struct {
 	Cursor  string
 }
 
+// ListPage is one LRANGE batch; More says a full batch came back, so there
+// may be elements past it.
+type ListPage struct {
+	Items []Bytes
+	More  bool
+}
+
 // Kind is what a key holds, as far as this build can show it.
 type Kind string
 
@@ -66,6 +76,7 @@ const (
 	KindString      Kind = "string"
 	KindHash        Kind = "hash"
 	KindSet         Kind = "set"
+	KindList        Kind = "list"
 	KindUnsupported Kind = "unsupported"
 )
 
@@ -88,6 +99,10 @@ type Value struct {
 	// Set: SetLen is SCARD and FirstSet the first page.
 	SetLen   int64
 	FirstSet SetPage
+
+	// List: ListLen is LLEN and FirstList the first page.
+	ListLen   int64
+	FirstList ListPage
 
 	// RedisType is the server's name for an unsupported type.
 	RedisType string
@@ -233,6 +248,16 @@ func GetValue(ctx context.Context, c *goredis.Client, key Bytes) (*Value, error)
 			return nil, err
 		}
 		return &Value{Kind: KindSet, TTL: ttl, SetLen: n, FirstSet: first}, nil
+	case "list":
+		n, err := do(ctx, c, "LLEN", k).Int64()
+		if err != nil {
+			return nil, err
+		}
+		first, err := ListRange(ctx, c, key, 0)
+		if err != nil {
+			return nil, err
+		}
+		return &Value{Kind: KindList, TTL: ttl, ListLen: n, FirstList: first}, nil
 	}
 	return &Value{Kind: KindUnsupported, TTL: ttl, RedisType: typ}, nil
 }
@@ -270,6 +295,19 @@ func SetScan(ctx context.Context, c *goredis.Client, key Bytes, cursor string) (
 	page := SetPage{Cursor: str(res[0])}
 	for _, m := range flat {
 		page.Members = append(page.Members, NewBytes([]byte(str(m))))
+	}
+	return page, nil
+}
+
+// ListRange reads one page of a list from index start.
+func ListRange(ctx context.Context, c *goredis.Client, key Bytes, start int64) (ListPage, error) {
+	res, err := do(ctx, c, "LRANGE", string(key.Data), start, start+listPageCount-1).Slice()
+	if err != nil {
+		return ListPage{}, err
+	}
+	page := ListPage{More: len(res) == listPageCount}
+	for _, r := range res {
+		page.Items = append(page.Items, NewBytes([]byte(str(r))))
 	}
 	return page, nil
 }
@@ -378,6 +416,84 @@ func SetAdd(ctx context.Context, c *goredis.Client, key, member Bytes, previous 
 // SetRemove removes one member.
 func SetRemove(ctx context.Context, c *goredis.Client, key, member Bytes) error {
 	return do(ctx, c, "SREM", string(key.Data), string(member.Data)).Err()
+}
+
+// ListPush adds an element at the head or the tail. OnlyIfAbsent refuses
+// when the key already exists.
+func ListPush(ctx context.Context, c *goredis.Client, key Bytes, value string, head bool, ttl TTLChange, onlyIfAbsent bool) (bool, error) {
+	k := string(key.Data)
+	if onlyIfAbsent {
+		n, err := do(ctx, c, "EXISTS", k).Int64()
+		if err != nil {
+			return false, err
+		}
+		if n > 0 {
+			return false, nil
+		}
+	}
+	cmd := "RPUSH"
+	if head {
+		cmd = "LPUSH"
+	}
+	_, err := c.TxPipelined(ctx, func(p goredis.Pipeliner) error {
+		do(ctx, p, cmd, k, value)
+		switch ttl.Mode {
+		case TTLPersist:
+			do(ctx, p, "PERSIST", k)
+		case TTLSeconds:
+			do(ctx, p, "EXPIRE", k, ttl.Seconds)
+		}
+		return nil
+	})
+	return err == nil, err
+}
+
+// ErrListChanged is a list edit that found another element at its index
+// than the one the pane showed: someone else changed the list since.
+var ErrListChanged = errors.New("The list changed since it was read. Reload and try again.")
+
+// ListSet replaces the element at index with value, provided it still is
+// expected, which WATCH makes certain of up to the write.
+func ListSet(ctx context.Context, c *goredis.Client, key Bytes, index int64, expected Bytes, value string) error {
+	return listEdit(ctx, c, key, index, expected, func(p goredis.Pipeliner, k string) {
+		do(ctx, p, "LSET", k, index, value)
+	})
+}
+
+// ListRemoveAt removes the element at index, provided it still is expected.
+// A list has no delete by index: the element is overwritten with a marker
+// no one else writes, and the marker is removed, so a duplicate earlier in
+// the list is not the one that goes.
+func ListRemoveAt(ctx context.Context, c *goredis.Client, key Bytes, index int64, expected Bytes) error {
+	var nonce [8]byte
+	rand.Read(nonce[:])
+	marker := "\x00seeker-del:" + hex.EncodeToString(nonce[:])
+	return listEdit(ctx, c, key, index, expected, func(p goredis.Pipeliner, k string) {
+		do(ctx, p, "LSET", k, index, marker)
+		do(ctx, p, "LREM", k, 1, marker)
+	})
+}
+
+func listEdit(ctx context.Context, c *goredis.Client, key Bytes, index int64, expected Bytes, write func(p goredis.Pipeliner, k string)) error {
+	k := string(key.Data)
+	err := c.Watch(ctx, func(tx *goredis.Tx) error {
+		cur, err := tx.LIndex(ctx, k, index).Result()
+		if errors.Is(err, goredis.Nil) || (err == nil && cur != string(expected.Data)) {
+			return ErrListChanged
+		}
+		if err != nil {
+			return err
+		}
+		_, err = tx.TxPipelined(ctx, func(p goredis.Pipeliner) error {
+			write(p, k)
+			return nil
+		})
+		return err
+	}, k)
+	if errors.Is(err, goredis.TxFailedErr) {
+		return ErrListChanged
+	}
+	return err
 }
 
 // DeleteKeys removes keys with UNLINK, which frees memory off the server's

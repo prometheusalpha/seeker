@@ -78,6 +78,10 @@ type RedisValueState struct {
 	SetCursor  string
 	SetLoading bool
 
+	List        []redis.Bytes
+	ListMore    bool
+	ListLoading bool
+
 	// Draft is the string being edited; it starts as the stored text and
 	// again after every read.
 	Draft string
@@ -88,11 +92,14 @@ type RedisValueState struct {
 
 	// Field editing: EditField is the row being edited (a rename or a new
 	// value), -1 for none; AddField opens a blank row at the end. A set uses
-	// the same drafts, with FieldName as the member and no FieldValue.
+	// the same drafts, with FieldName as the member and no FieldValue, and a
+	// list's element is FieldName too.
 	EditField  int
 	FieldName  string
 	FieldValue string
 	AddField   bool
+	// AddHead says a list's new element goes to the head, not the tail.
+	AddHead bool
 
 	gen int
 }
@@ -137,7 +144,7 @@ type RedisConsole struct {
 type RedisNewKey struct {
 	Open  bool
 	Key   string
-	Type  string // "string", "hash" or "set"
+	Type  string // "string", "hash", "set" or "list"
 	Value string
 	Field string
 	TTL   string // seconds; blank for none
@@ -147,7 +154,7 @@ type RedisNewKey struct {
 
 // RedisKeyTypes is what the new-key form offers; the browser shows other
 // types but cannot write them.
-var RedisKeyTypes = []string{"string", "hash", "set"}
+var RedisKeyTypes = []string{"string", "hash", "set", "list"}
 
 // RedisOf is a Redis tab's state, made, and its key list scanned, the first
 // time the tab shows. Nil for a tab that is not Redis.
@@ -325,6 +332,9 @@ func (a *App) RedisReload(id string) {
 		if v.Kind == redis.KindHash {
 			rt.Value.Hash, rt.Value.HashCursor = v.First.Entries, v.First.Cursor
 		}
+		if v.Kind == redis.KindList {
+			rt.Value.List, rt.Value.ListMore = v.FirstList.Items, v.FirstList.More
+		}
 		if v.Kind == redis.KindSet {
 			rt.Value.Set, rt.Value.SetCursor = v.FirstSet.Members, v.FirstSet.Cursor
 		}
@@ -473,6 +483,54 @@ func (a *App) RedisMoreMembers(id string) {
 	})
 }
 
+// RedisAddItem pushes an element on the chosen list, at the head or the tail.
+func (a *App) RedisAddItem(id, value string, head bool) {
+	a.redisWrite(id, func(ctx context.Context, c *goredis.Client, key redis.Bytes) error {
+		_, err := redis.ListPush(ctx, c, key, value, head, keepTTL, false)
+		return err
+	})
+}
+
+// RedisSaveItem replaces the element at index, which must still be expected.
+func (a *App) RedisSaveItem(id string, index int, expected redis.Bytes, value string) {
+	a.redisWrite(id, func(ctx context.Context, c *goredis.Client, key redis.Bytes) error {
+		return redis.ListSet(ctx, c, key, int64(index), expected, value)
+	})
+}
+
+// RedisRemoveItem removes the element at index, which must still be expected.
+func (a *App) RedisRemoveItem(id string, index int, expected redis.Bytes) {
+	a.redisWrite(id, func(ctx context.Context, c *goredis.Client, key redis.Bytes) error {
+		return redis.ListRemoveAt(ctx, c, key, int64(index), expected)
+	})
+}
+
+// RedisMoreItems reads the next page of the chosen list.
+func (a *App) RedisMoreItems(id string) {
+	rt := a.redisTabs[id]
+	if rt == nil || rt.Sel == nil || rt.Value.ListLoading || !rt.Value.ListMore {
+		return
+	}
+	rt.Value.ListLoading = true
+	key, start, gen := rt.Sel.Key, int64(len(rt.Value.List)), rt.Value.gen
+	var page redis.ListPage
+	a.redisCall(rt, func(ctx context.Context, c *goredis.Client) (err error) {
+		page, err = redis.ListRange(ctx, c, key, start)
+		return err
+	}, func(err error) {
+		if rt.Value.gen != gen {
+			return
+		}
+		rt.Value.ListLoading = false
+		if err != nil {
+			a.toast(shortError(err))
+			return
+		}
+		rt.Value.List = append(rt.Value.List, page.Items...)
+		rt.Value.ListMore = page.More
+	})
+}
+
 // RedisSetTTL gives the chosen key a lifetime of seconds, or none.
 func (a *App) RedisSetTTL(id string, change redis.TTLChange) {
 	a.redisWrite(id, func(ctx context.Context, c *goredis.Client, key redis.Bytes) error {
@@ -548,6 +606,9 @@ func (a *App) RedisCreate(id string) {
 	case n.Type == "set" && n.Field == "":
 		n.Err = "Enter the first member."
 		return
+	case n.Type == "list" && n.Value == "":
+		n.Err = "Enter the first element."
+		return
 	case secs != "":
 		v, err := strconv.ParseInt(secs, 10, 64)
 		if err != nil || v <= 0 {
@@ -565,6 +626,8 @@ func (a *App) RedisCreate(id string) {
 			created, err = redis.HashSet(ctx, c, key, field, value, nil, ttl, true)
 		case "set":
 			created, err = redis.SetAdd(ctx, c, key, field, nil, ttl, true)
+		case "list":
+			created, err = redis.ListPush(ctx, c, key, value, false, ttl, true)
 		default:
 			created, err = redis.SetString(ctx, c, key, value, ttl, true)
 		}

@@ -19,6 +19,10 @@ type redisUI struct {
 	keys ui.ListState
 	hash ui.ListState
 	sel  int
+	// copied is the field row whose copy button shows a tick until
+	// copiedAt plus copyTick.
+	copied   int
+	copiedAt time.Time
 	// keysPct is the key list's share of the top, topPct the top's share of
 	// the tab, the console taking the rest.
 	keysPct, topPct float32
@@ -30,7 +34,7 @@ func (s *App) redisState(id string) *redisUI {
 	}
 	st := s.redis[id]
 	if st == nil {
-		st = &redisUI{sel: -1, keysPct: 34, topPct: 68}
+		st = &redisUI{sel: -1, copied: -1, keysPct: 34, topPct: 68}
 		s.redis[id] = st
 	}
 	return st
@@ -306,7 +310,7 @@ func (s *App) redisHash(c *ui.Context, id string, v *app.RedisValueState, st *re
 			s.redisFieldEditor(c, id, v, &e)
 			return
 		}
-		s.redisFieldRow(c, id, v, i, e)
+		s.redisFieldRow(c, id, v, st, i, e)
 	}).Grow(1).FillWidth()
 	if v.HashCursor != "0" && v.HashCursor != "" {
 		ui.Divider(c)
@@ -322,27 +326,47 @@ func (s *App) redisHash(c *ui.Context, id string, v *app.RedisValueState, st *re
 	}
 }
 
-func (s *App) redisFieldRow(c *ui.Context, id string, v *app.RedisValueState, i int, e redis.HashEntry) {
+// copyTick is how long a copy button shows its tick.
+const copyTick = 1500 * time.Millisecond
+
+func (s *App) redisFieldRow(c *ui.Context, id string, v *app.RedisValueState, st *redisUI, i int, e redis.HashEntry) {
 	t := c.Theme()
 	ui.Row(c).FillWidth().Height(28).AlignItems(ui.Center).Gap(10).Padding(0, 10).Children(func() {
 		s.tableFont(ui.Text(c, e.Field.Text), -0.5).SingleLine().Width(160).Shrink(0).Tooltip(e.Field.Text)
 		s.tableFont(ui.Text(c, e.Value.Text), -0.5).SingleLine().Grow(1).TextColor(t.TextMuted).Tooltip(e.Value.Text)
+		icon := icons.Copy
+		if left := copyTick - time.Since(st.copiedAt); st.copied == i && left > 0 {
+			icon = icons.Check
+			c.After(left)
+		}
+		if fieldButton(c, "rf-copy-"+strconv.Itoa(i), icon, "Copy value", false).Clicked() {
+			c.WriteClipboard(e.Value.Text)
+			st.copied, st.copiedAt = i, time.Now()
+			s.core.Toast("Value copied")
+		}
 		// A binary field or value cannot be typed back, so it only deletes.
 		if !e.Field.Binary && !e.Value.Binary {
-			if ui.ButtonBase(c.Key("rf-edit-"+strconv.Itoa(i))).Size(24, 24).Radius(6).Label("Edit field").Tooltip("Edit field").
-				Disabled(v.Busy).Children(func() {
-				ui.Icon(c, icons.Pencil).FontSize(13).TextColor(t.TextMuted)
-			}).Clicked() {
+			if fieldButton(c, "rf-edit-"+strconv.Itoa(i), icons.Pencil, "Edit field", v.Busy).Clicked() {
 				v.EditField, v.AddField, v.FieldName, v.FieldValue = i, false, e.Field.Text, e.Value.Text
 			}
 		}
-		if ui.ButtonBase(c.Key("rf-del-"+strconv.Itoa(i))).Size(24, 24).Radius(6).Label("Delete field").Tooltip("Delete field").
-			Disabled(v.Busy).Children(func() {
-			ui.Icon(c, icons.Trash).FontSize(13).TextColor(t.TextMuted)
-		}).Clicked() {
+		if fieldButton(c, "rf-del-"+strconv.Itoa(i), icons.Trash, "Delete field", v.Busy).Clicked() {
 			s.core.RedisRemoveField(id, e.Field)
 		}
 	})
+}
+
+// fieldButton is a row's small icon button; it takes a hover background so
+// it reads as pressable, which the bare icon did not.
+func fieldButton(c *ui.Context, key string, icon *ui.SVG, label string, disabled bool) ui.Element {
+	t := c.Theme()
+	b := ui.ButtonBase(c.Key(key)).Size(24, 24).Radius(6).Label(label).Tooltip(label).Disabled(disabled)
+	if b.Hovered() {
+		b.Background(t.SurfaceHover)
+	}
+	b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+	b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(t.TextMuted) })
+	return b
 }
 
 // redisFieldEditor edits a field in place, or adds one when e is nil.

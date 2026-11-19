@@ -1,7 +1,8 @@
 // Package icons holds the Lucide icons the app shows, converted from
 // lucide-vue-next 0.470.0 so they match recall's, and the engines' logos
-// from simple-icons 16.30.0, filled with currentColor so they tint as the
-// rest do.
+// from devicon 2.16.0, filled with currentColor so they tint as the rest
+// do. Postgres and Redis are the solid "plain" marks; MySQL has none, so
+// its dolphin is stroked thicker to stand beside them.
 package icons
 
 import (

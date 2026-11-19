@@ -53,6 +53,7 @@ var (
 	FileDown            = load("file-down")
 	Folder              = load("folder")
 	FolderTree          = load("folder-tree")
+	GripVertical        = load("grip-vertical")
 	Key                 = load("key-round")
 	Link                = load("link")
 	ListTree            = load("list-tree")

@@ -46,6 +46,11 @@ type ResultGrid struct {
 	Target  *TableTarget
 
 	hidden map[int]bool
+	// order is every column's id in the order shown, hidden ones included,
+	// so a column hidden and shown again comes back where it was. The
+	// table's List.Columns.Order is kept equal to it; a header drag
+	// rewrites that with the columns shown only, which syncOrder merges.
+	order []string
 	// sorted marks the result columns the table's ORDER BY sorts by: the
 	// position in it (from 1) and whether it descends.
 	sorted map[int]sortMark
@@ -63,6 +68,10 @@ type ResultGrid struct {
 	// to give it the keyboard once, as it opens.
 	EditText  string
 	EditFocus bool
+
+	// ColumnsOpen and ColumnsList are the Columns popover's.
+	ColumnsOpen bool
+	ColumnsList ui.ListState
 }
 
 type sortMark struct {
@@ -175,8 +184,10 @@ func (g *ResultGrid) Inherit(prev *ResultGrid) {
 	if prev == nil || prev.Signature() != g.Signature() {
 		return
 	}
+	prev.syncOrder()
+	g.order = slices.Clone(prev.order)
 	g.List.Columns = ui.TableLayout{
-		Order:  slices.Clone(prev.List.Columns.Order),
+		Order:  slices.Clone(prev.order),
 		Widths: cloneWidths(prev.List.Columns.Widths),
 	}
 	for i := range prev.hidden {
@@ -238,6 +249,9 @@ func (g *ResultGrid) Width(result int) float32 {
 // SetHidden shows or hides a result column. The last visible column stays:
 // a grid of nothing has no header to show the menu from.
 func (g *ResultGrid) SetHidden(result int, hide bool) {
+	// Merged while the table's order still lacks exactly the columns
+	// hidden; a column shown first would be missing from it as if hidden.
+	g.syncOrder()
 	if hide == g.hidden[result] || result < 0 || result >= len(g.Columns) {
 		return
 	}
@@ -256,8 +270,69 @@ func (g *ResultGrid) Hidden(result int) bool { return g.hidden[result] }
 
 // ShowAll brings every hidden column back.
 func (g *ResultGrid) ShowAll() {
+	g.syncOrder()
 	clear(g.hidden)
 	g.valid = false
+}
+
+// ColumnOrder is every result column in the order the table shows them,
+// hidden ones in the place they come back to.
+func (g *ResultGrid) ColumnOrder() []int {
+	g.syncOrder()
+	out := make([]int, 0, len(g.order))
+	for _, id := range g.order {
+		if n, ok := parseColID(id); ok {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// MoveColumns moves the columns at rows of ColumnOrder before the one at
+// to, len(ColumnOrder) for the end, as ui.ListState.Reorder gives them.
+func (g *ResultGrid) MoveColumns(rows []int, to int) {
+	g.syncOrder()
+	var moved, rest []string
+	at := -1
+	for i, id := range g.order {
+		if i == to {
+			at = len(rest)
+		}
+		if slices.Contains(rows, i) {
+			moved = append(moved, id)
+		} else {
+			rest = append(rest, id)
+		}
+	}
+	if at < 0 {
+		at = len(rest)
+	}
+	g.order = slices.Insert(rest, at, moved...)
+	g.List.Columns.Order = slices.Clone(g.order)
+}
+
+// syncOrder brings order and the table's order back to one. Read lazily,
+// by whoever needs the order, rather than after each build of the table.
+func (g *ResultGrid) syncOrder() {
+	if g.order != nil && slices.Equal(g.List.Columns.Order, g.order) {
+		return
+	}
+	ids := make([]string, len(g.Columns))
+	for i := range g.Columns {
+		ids[i] = colID(i)
+	}
+	full := grid.FullColumnOrder(g.order, ids)
+	if !slices.Equal(g.List.Columns.Order, g.order) {
+		// A header drag: the columns shown in their new order, the row
+		// numbers among them.
+		shown := slices.DeleteFunc(slices.Clone(g.List.Columns.Order), func(id string) bool {
+			n, ok := parseColID(id)
+			return !ok || n >= len(g.Columns) || g.hidden[n]
+		})
+		full = grid.MergeVisibleOrder(full, shown)
+	}
+	g.order = full
+	g.List.Columns.Order = slices.Clone(full)
 }
 
 // SelectedRows are the rows chosen, top to bottom.

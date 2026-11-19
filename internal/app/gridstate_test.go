@@ -102,6 +102,43 @@ func TestGridInheritsLayoutOnlyForSameColumns(t *testing.T) {
 	}
 }
 
+// A header drag writes the order of the columns shown; a column hidden
+// through it comes back where it was, and the Columns list reads the same
+// order.
+func TestGridHeaderDragKeepsHiddenPlace(t *testing.T) {
+	g := NewResultGrid(sampleResult(), nil)
+	g.SetHidden(1, true)
+	// What ui.Table writes as score is dragged before id.
+	g.List.Columns.Order = []string{"#", "c2", "c0"}
+	if got := g.ColumnOrder(); !slices.Equal(got, []int{2, 1, 0}) {
+		t.Errorf("order after the drag: %v, want [2 1 0]", got)
+	}
+	g.SetHidden(1, false)
+	if got := g.ColumnOrder(); !slices.Equal(got, []int{2, 1, 0}) {
+		t.Errorf("order after showing email: %v, want it back in its place", got)
+	}
+	if !slices.Equal(g.List.Columns.Order, []string{"c2", "c1", "c0"}) {
+		t.Errorf("the table's order: %v", g.List.Columns.Order)
+	}
+}
+
+// A column moved in the Columns list moves in the table, hidden ones too.
+func TestGridMoveColumns(t *testing.T) {
+	g := NewResultGrid(sampleResult(), nil)
+	g.SetHidden(2, true)
+	g.MoveColumns([]int{2}, 0)
+	if got := g.ColumnOrder(); !slices.Equal(got, []int{2, 0, 1}) {
+		t.Errorf("score moved first: %v", got)
+	}
+	g.MoveColumns([]int{0}, 3)
+	if got := g.ColumnOrder(); !slices.Equal(got, []int{0, 1, 2}) {
+		t.Errorf("score moved to the end: %v", got)
+	}
+	if !slices.Equal(g.List.Columns.Order, []string{"c0", "c1", "c2"}) {
+		t.Errorf("the table's order: %v", g.List.Columns.Order)
+	}
+}
+
 func TestGridEditsStageAndChange(t *testing.T) {
 	g := NewResultGrid(sampleResult(), sampleTarget())
 	if !g.CanEdit() {

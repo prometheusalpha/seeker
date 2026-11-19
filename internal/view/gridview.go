@@ -3,6 +3,7 @@ package view
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -274,35 +275,19 @@ func (s *App) copySelection(c *ui.Context, g *app.ResultGrid) {
 }
 
 // headerMenu is the context menu of a column's header: sort by it (a
-// table's), hide it, and the list of columns to show again. A click on the
-// name sorts nothing, as recall's TODO asks.
+// table's) and hide it. Showing and moving columns is the Columns
+// popover's. A click on the name sorts nothing, as recall's TODO asks.
 func (s *App) headerMenu(c *ui.Context, m *ui.Menu, g *app.ResultGrid, gc gridCtx, rc int) {
-	if rc >= 0 {
-		s.sortItems(m, gc, rc)
-		if m.Item("Copy column name").Chosen() {
-			c.WriteClipboard(g.Columns[rc].Name)
-		}
-		if m.Item("Hide column").ID("hide").Disabled(len(g.Columns) <= 1).Chosen() {
-			g.SetHidden(rc, true)
-		}
-		m.Separator()
+	if rc < 0 {
+		return
 	}
-	s.columnsMenu(m, g)
-}
-
-// columnsMenu lists every column with a check by those shown.
-func (s *App) columnsMenu(m *ui.Menu, g *app.ResultGrid) {
-	m.Submenu("Columns", func(sub *ui.Menu) {
-		if sub.Item("Show all").ID("show-all").Chosen() {
-			g.ShowAll()
-		}
-		sub.Separator()
-		for i, col := range g.Columns {
-			if sub.Item(col.Name).ID("col-" + strconv.Itoa(i)).Checked(!g.Hidden(i)).Chosen() {
-				g.SetHidden(i, !g.Hidden(i))
-			}
-		}
-	})
+	s.sortItems(m, gc, rc)
+	if m.Item("Copy column name").Chosen() {
+		c.WriteClipboard(g.Columns[rc].Name)
+	}
+	if m.Item("Hide column").ID("hide").Disabled(len(g.Columns) <= 1).Chosen() {
+		g.SetHidden(rc, true)
+	}
 }
 
 // sortItems are the sort entries of a table's menus; a query's result has no
@@ -357,8 +342,6 @@ func (s *App) cellMenu(c *ui.Context, m *ui.Menu, g *app.ResultGrid, gc gridCtx,
 			s.sortItems(m, gc, rc)
 		}
 	}
-	m.Separator()
-	s.columnsMenu(m, g)
 }
 
 // exportMenu is the Export icon button: the whole result as CSV or JSON.
@@ -373,19 +356,55 @@ func (s *App) exportMenu(c *ui.Context, g *app.ResultGrid, title string) {
 	})
 }
 
-// columnsButton is the menu of columns to show or hide.
+// columnsButton opens every column in the order the table shows them: a
+// click shows or hides one, a drag moves it as a drag of its header does.
+// A popover rather than a menu, which has no rows to drag.
 func (s *App) columnsButton(c *ui.Context, g *app.ResultGrid) {
-	ui.PopoverMenuButton(c.Key("columns"), "Columns", func(m *ui.Menu) {
-		if m.Item("Show all").ID("show-all").Chosen() {
-			g.ShowAll()
-		}
-		m.Separator()
-		for i, col := range g.Columns {
-			if m.Item(col.Name).ID("col-" + strconv.Itoa(i)).Checked(!g.Hidden(i)).Chosen() {
-				g.SetHidden(i, !g.Hidden(i))
+	t := c.Theme()
+	btn := ui.Button(c.Key("columns"), "").Height(26).Gap(6).Tooltip("Show, hide or move columns")
+	btn.Children(func() {
+		ui.Text(c, "Columns").SingleLine()
+		ui.Icon(c, icons.ChevronDown).FontSize(12).TextColor(t.TextMuted)
+	})
+	if btn.Clicked() {
+		g.ColumnsOpen = !g.ColumnsOpen
+	}
+	ui.Popover(c, btn, &g.ColumnsOpen, func() {
+		order := g.ColumnOrder()
+		ui.Column(c).Width(260).Gap(6).Children(func() {
+			if ui.Button(c.Key("show-all"), "Show all").Height(24).Disabled(!slices.ContainsFunc(order, g.Hidden)).Clicked() {
+				g.ShowAll()
 			}
-		}
-	}).Height(26).Tooltip("Show or hide columns")
+			g.ColumnsList.Reorder = g.MoveColumns
+			ui.List(c.Key("columns-list"), &g.ColumnsList, len(order), func(i int) {
+				s.columnRow(c, g, order[i])
+			}).FillWidth().MaxHeight(320).Shrink(0)
+		})
+	})
+}
+
+// columnRow is one column of the Columns popover. Its check is a look, as
+// a boolean cell's, that the pointer passes through: the row takes the
+// click, so a press on the check toggles and drags the row as a press
+// anywhere else on it does. Disabled alone would swallow the click.
+func (s *App) columnRow(c *ui.Context, g *app.ResultGrid, rc int) {
+	t := c.Theme()
+	name := g.Columns[rc].Name
+	shown := !g.Hidden(rc)
+	row := ui.ButtonBase(c.Key("col-"+strconv.Itoa(rc))).FillWidth().Height(26).Padding(0, 6).Gap(6).Radius(4).AlignItems(ui.Center).
+		Label(name).Tooltip(g.Columns[rc].Type)
+	if row.Hovered() {
+		row.Background(t.SurfaceHover)
+	}
+	row.Children(func() {
+		ui.Icon(c, icons.GripVertical).FontSize(14).TextColor(t.TextMuted)
+		ui.Checkbox(c.Key("check"), &shown, "").Disabled(true).DimDisabled(false).IgnoreInput(true)
+		ui.Text(c, name).FontSize(12).SingleLine()
+		ui.Spacer(c)
+	})
+	if row.Clicked() {
+		g.SetHidden(rc, shown)
+	}
 }
 
 // selectionTexts are the status bar's two readings of the cells chosen:

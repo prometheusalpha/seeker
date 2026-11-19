@@ -296,6 +296,69 @@ func TestLiveHeaderDragMovesColumn(t *testing.T) {
 	}
 }
 
+// The Columns popover and the headers are one order: a row dragged in the
+// popover moves its column, and a header dragged moves its row.
+func TestLiveColumnsPopoverOrder(t *testing.T) {
+	_, _, core, p, tt := livePGWindow(t, "select 1 as first_col, 2 as second_col, 3 as third_col")
+	runQuery(t, core, p, tt, "third_col")
+	if err := tt.Click("Columns"); err != nil {
+		t.Fatal(err)
+	}
+	p.frame(tt)
+	// The x of each header, and the y of each row of the popover.
+	at := func(role ui.Role, name string) ui.Rect {
+		t.Helper()
+		a, ok := tt.AccessByRole(role, name)
+		if !ok {
+			t.Fatalf("no %v %q: %v", role, name, tt.Texts())
+		}
+		return a.Bounds
+	}
+	drag := func(fromX, fromY, toX, toY float32) {
+		tt.Press(fromX, fromY)
+		for k := 1; k <= 4; k++ {
+			f := float32(k) / 4
+			tt.Move(fromX+(toX-fromX)*f, fromY+(toY-fromY)*f)
+		}
+		tt.Release(toX, toY)
+		p.frame(tt)
+	}
+
+	third, first := at(ui.RoleButton, "third_col"), at(ui.RoleButton, "first_col")
+	drag(third.X+third.W/2, third.Y+third.H/2, first.X+first.W/2, first.Y+2)
+	if a, b := at(ui.RoleColumnHeader, "third_col"), at(ui.RoleColumnHeader, "first_col"); a.X > b.X {
+		t.Errorf("third_col dragged first in the popover, but its header is at %v, first_col's at %v", a.X, b.X)
+	}
+
+	// third, first, second: first hidden keeps the middle place while
+	// second is dragged before third by its header.
+	// On its check, which is only a look and so not in the tree: past the
+	// row's padding (6), its grip (14) and the gap (6).
+	hide := at(ui.RoleButton, "first_col")
+	tt.ClickAt(hide.X+6+14+6+8, hide.Y+hide.H/2)
+	p.frame(tt)
+	if hasHeader(tt, "first_col") {
+		t.Fatal("a click on first_col's check did not hide it")
+	}
+	tt.Key(0, ui.KeyEscape)
+	p.frame(tt)
+	h3, h2 := at(ui.RoleColumnHeader, "third_col"), at(ui.RoleColumnHeader, "second_col")
+	drag(h2.X+h2.W/2, h2.Y+h2.H/2, h3.X+2, h3.Y+h3.H/2)
+	if err := tt.Click("Columns"); err != nil {
+		t.Fatal(err)
+	}
+	p.frame(tt)
+	r1, r2, r3 := at(ui.RoleButton, "first_col"), at(ui.RoleButton, "second_col"), at(ui.RoleButton, "third_col")
+	if !(r2.Y < r1.Y && r1.Y < r3.Y) {
+		t.Errorf("after the header drag the popover reads first %v, second %v, third %v; want second, first (hidden, in its place), third", r1.Y, r2.Y, r3.Y)
+	}
+}
+
+func hasHeader(tt *ui.Tester, name string) bool {
+	_, ok := tt.AccessByRole(ui.RoleColumnHeader, name)
+	return ok
+}
+
 // Table tab odds: ⌘R reads again, the cell menu sorts, Export is on offer.
 func TestLiveTableTabMenusAndReload(t *testing.T) {
 	profile, password, core, p, tt := livePGWindow(t, "select 1")

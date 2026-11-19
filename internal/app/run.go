@@ -43,6 +43,7 @@ type runState struct {
 	PlanStopped bool
 	planGen     int
 	planCancel  context.CancelFunc
+	PlanStarted time.Time
 	Plan        *driver.Plan
 	// Parsed is Plan read into nodes for the viewer; its Nodes are empty for
 	// an answer the parser does not read, which the viewer shows as raw.
@@ -307,6 +308,7 @@ func (a *App) Explain(id, sql string) {
 	a.ensureTabConnected(t)
 	cs := a.conn(t.Conn)
 	te.run.Explaining, te.run.Plan, te.run.Parsed, te.run.PlanErr, te.run.PlanSQL = true, nil, nil, "", sql
+	te.run.PlanStarted = time.Now()
 	te.run.PlanStopped = false
 	te.pane.View = ViewExplain
 	gen := te.run.gen

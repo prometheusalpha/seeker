@@ -1,5 +1,7 @@
 // Package icons holds the Lucide icons the app shows, converted from
-// lucide-vue-next 0.470.0 so they match recall's.
+// lucide-vue-next 0.470.0 so they match recall's, and the engines' logos
+// from simple-icons 16.30.0, filled with currentColor so they tint as the
+// rest do.
 package icons
 
 import (
@@ -54,10 +56,13 @@ var (
 	Link                = load("link")
 	ListTree            = load("list-tree")
 	Moon                = load("moon")
+	MySQL               = load("mysql")
 	PanelLeft           = load("panel-left")
 	Pin                 = load("pin")
 	Play                = load("play")
 	Plus                = load("plus")
+	Postgres            = load("postgresql")
+	Redis               = load("redis")
 	Refresh             = load("refresh-cw")
 	Keyboard            = load("keyboard")
 	Palette             = load("palette")

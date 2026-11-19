@@ -41,6 +41,32 @@ func (s *App) resultsNote(c *ui.Context, msg string) {
 	})
 }
 
+// runTick is how often a running statement's clock is drawn again.
+const runTick = 100 * time.Millisecond
+
+// runningNote stands in for rows not come yet: how long the statement has
+// run, ticking, and the button that stops it.
+func (s *App) runningNote(c *ui.Context, label string, started time.Time, stop func()) {
+	c.After(runTick)
+	t := c.Theme()
+	ui.Box(c).Grow(1).FillWidth().Center().Children(func() {
+		ui.Column(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Spinner(c).FontSize(14).TextColor(t.TextMuted).Label(label)
+				ui.Text(c, label+" "+ticking(time.Since(started))).FontSize(12).TextColor(t.TextMuted).SingleLine()
+			})
+			if ui.Button(c.Key("run-cancel"), "Cancel").Height(24).Clicked() {
+				stop()
+			}
+		})
+	})
+}
+
+// ticking is a running clock: tenths, so it visibly moves.
+func ticking(d time.Duration) string {
+	return fmt.Sprintf("%.1f s", d.Seconds())
+}
+
 // queryResults shows what a run left: Result or Explain, and for a batch
 // the statement to look at.
 func (s *App) queryResults(c *ui.Context, tab app.Tab) {
@@ -69,7 +95,7 @@ func (s *App) queryResults(c *ui.Context, tab app.Tab) {
 	ui.Divider(c)
 	if pane.View == app.ViewExplain {
 		s.planPane(c, tab.ID, run)
-		s.statusBar(c, run.Plan != nil, "", nil, nil)
+		s.statusBar(c, run.Plan != nil, "", nil, nil, nil)
 		return
 	}
 	if !run.Any() {
@@ -82,12 +108,12 @@ func (s *App) queryResults(c *ui.Context, tab app.Tab) {
 	if len(run.Results) == 0 {
 		switch {
 		case run.Running:
-			s.resultsNote(c, "Running…")
+			s.runningNote(c, "Running…", run.Started, func() { s.core.Stop(tab.ID) })
 		case run.Err == "":
 			s.resultsNote(c, "No result.")
 		}
 		if run.Stopped {
-			s.statusBar(c, true, fmt.Sprintf("Stopped after %d", len(run.Results)), nil, nil)
+			s.statusBar(c, true, fmt.Sprintf("Stopped after %d", len(run.Results)), nil, nil, nil)
 		}
 		return
 	}
@@ -100,7 +126,11 @@ func (s *App) queryResults(c *ui.Context, tab app.Tab) {
 	default:
 		s.resultGrid(c, g, gridCtx{tabID: tab.ID})
 	}
-	s.statusBar(c, true, runSummary(run, res), g, nil)
+	var stop func()
+	if run.Running {
+		stop = func() { s.core.Stop(tab.ID) }
+	}
+	s.statusBar(c, true, runSummary(run, res), g, nil, stop)
 }
 
 // statementPicker switches among the statements of a batch.
@@ -149,7 +179,7 @@ func runSummary(r *app.RunView, res driver.Result) string {
 	}
 	switch {
 	case r.Running:
-		fmt.Fprintf(&b, " · running, %d done", len(r.Results))
+		fmt.Fprintf(&b, " · running %s, %d done", ticking(time.Since(r.Started)), len(r.Results))
 	case r.Stopped:
 		fmt.Fprintf(&b, " · stopped after %d", len(r.Results))
 	case len(r.Results) > 1:
@@ -168,9 +198,15 @@ func round(d time.Duration) string {
 // statusBar is the line under the grid: the rows and the time on the left;
 // on the right the cells chosen and their sum, the edits waiting, and a
 // table's paging.
-func (s *App) statusBar(c *ui.Context, show bool, text string, g *app.ResultGrid, tab *app.Tab) {
+//
+// stop, when set, is a load or run still in flight over rows already shown:
+// the bar keeps its clock ticking and offers to cancel it.
+func (s *App) statusBar(c *ui.Context, show bool, text string, g *app.ResultGrid, tab *app.Tab, stop func()) {
 	if !show {
 		return
+	}
+	if stop != nil {
+		c.After(runTick)
 	}
 	t := c.Theme()
 	ui.Divider(c)
@@ -181,6 +217,9 @@ func (s *App) statusBar(c *ui.Context, show bool, text string, g *app.ResultGrid
 			}
 		}
 		ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		if stop != nil && ui.Button(c.Key("bar-cancel"), "Cancel").Height(20).Clicked() {
+			stop()
+		}
 		ui.Spacer(c)
 		if g != nil {
 			cells, sum := selectionTexts(g)

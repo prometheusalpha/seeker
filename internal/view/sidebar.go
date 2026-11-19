@@ -170,7 +170,7 @@ func (s *App) connectionRow(c *ui.Context, n app.Node, chosen bool, muted ui.Col
 		if chosen {
 			tint = t.AccentText
 		}
-		ui.Icon(c, icons.Database).FontSize(14).TextColor(tint)
+		ui.Icon(c, engineIcon(p.DBType)).FontSize(14).TextColor(tint)
 	}
 	name := ui.Text(c, p.Name).FontSize(13).FontWeight(480).SingleLine()
 	if status == app.Failed {
@@ -183,6 +183,17 @@ func (s *App) connectionRow(c *ui.Context, n app.Node, chosen bool, muted ui.Col
 	if status == app.Connected {
 		ui.Box(c).Size(6, 6).Radius(3).Background(t.Success).Label("Connected")
 	}
+}
+
+// engineIcon is the logo of the engine a profile speaks.
+func engineIcon(t model.DBType) *ui.SVG {
+	switch t {
+	case model.MySQL:
+		return icons.MySQL
+	case model.Redis:
+		return icons.Redis
+	}
+	return icons.Postgres
 }
 
 // connectionEngine names the server once it answered, and the engine the

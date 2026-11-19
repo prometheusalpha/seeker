@@ -49,7 +49,10 @@ func (s *App) connectionDialog(c *ui.Context, pal palette, d *app.ConnDialog) {
 						ui.TextInput(c, &d.Name).Placeholder(namePlaceholder)
 					})
 					ui.Field(c, "Type", func() {
-						ui.Select(c, &d.Kind, app.ConnectionKinds).FillWidth().Label("Type")
+						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+							ui.Icon(c, engineIcon(kindEngine(d.Kind))).FontSize(16).TextColor(c.Theme().Accent)
+							ui.Select(c, &d.Kind, app.ConnectionKinds).Grow(1).Label("Type")
+						})
 					})
 					ui.Row(c).FillWidth().Gap(10).Children(func() {
 						ui.Field(c, "Host", func() {
@@ -294,6 +297,14 @@ func (s *App) databaseRow(c *ui.Context, t *ui.Theme, item app.DatabaseItem) {
 			s.core.ToggleDatabase(item.Name)
 		}
 	})
+}
+
+// kindEngine is the engine a dialog's type names, Redis included.
+func kindEngine(kind string) model.DBType {
+	if kind == app.KindRedis {
+		return model.Redis
+	}
+	return engine(kind)
 }
 
 // engine is the driver a dialog's type names.

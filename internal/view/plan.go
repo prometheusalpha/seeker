@@ -74,7 +74,7 @@ func (s *App) planPane(c *ui.Context, tabID string, r *app.RunView) {
 	t := c.Theme()
 	switch {
 	case r.Explaining:
-		s.resultsNote(c, "Explaining…")
+		s.runningNote(c, "Explaining…", r.PlanStarted, func() { s.core.Stop(tabID) })
 	case r.PlanStopped:
 		s.resultsNote(c, "Explain stopped")
 	case r.PlanErr != "":

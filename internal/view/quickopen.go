@@ -96,6 +96,9 @@ func (s *App) quickRow(c *ui.Context, i int, it app.QuickItem) {
 			ico = icons.FileCode
 		case app.QuickConnection:
 			ico = icons.Database
+			if p, ok := s.core.Profile(it.Conn); ok {
+				ico = engineIcon(p.DBType)
+			}
 		}
 		ui.Icon(c, ico).FontSize(14).TextColor(icon)
 		marked(c, it.Label, runeRanges(it.Label, it.Hits), text, matchMark(t, chosen)).FontSize(13).SingleLine()

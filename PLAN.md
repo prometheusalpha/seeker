@@ -427,23 +427,19 @@ Kết quả:
 
 ---
 
-## 6. Backlog sau parity (từ `../recall/TODO.md`, mục chưa tick)
+## 6. Backlog sau parity (từ `../recall/TODO.md`, rà lại 2026-11-19)
 
-- Phase 1: nút New connection khi sidebar trống, nút `+` ở sidebar, nút định vị tab hiện tại trong sidebar, menu edit connection.
-- Phase 2: căn giữa nút new tab, lazy load nhóm trong table (FK/trigger chậm), sort qua context menu thay vì click tên cột.
-- Phase 3: context ở file SQL, vùng run SQL, global search.
-- Phase 5: reconnect trong context menu, nền modal tối hơn, viền phải cột cuối, icon theo loại DB (mysql/postgres).
-- Phase 14: sum selection, Shift+click chọn vùng, auto width cột, format SQL, tab auto width.
-- Phase 15: màu chữ theo kiểu dữ liệu, suggest field, nới thanh WHERE/ORDER BY, Cmd+L.
-- Phase 16: pin table, generate INSERT ở context menu row number, generate DDL, cancel connect.
-- Sau: xuống dòng trong cell, nút count theo kết quả query, copy raw plan/tree, sidebar index (tooltip điều kiện partial index, Copy DDL), khoảng trống dưới editor, giữ thứ tự cột khi reload, màn loading, cơ chế update (`plugins/updater`), Redis.
-- Nhiều mục ở trên recall đã code xong nhưng chưa tick ("code xong, chờ test trong app"); khi port, coi code recall là chuẩn, không phải checkbox.
+Các mục khác của `TODO.md` đã có trong Seeker (M2–M7); viền phải cột cuối bỏ (grid không có viền cột); khoảng trống dưới editor (cuộn quá dòng cuối) đã sửa trong mygo.
+
+- Icon connection theo loại DB (Postgres/MySQL/Redis); hiện mọi connection dùng chung icon `Database`.
+- Màn loading.
+- Nền modal tối hơn (`ui.Modal` đang dùng nền mặc định của mygo).
+- Cơ chế update (`plugins/updater`).
+- Nút count cho kết quả của query (hiện chỉ table tab có).
+- Chưa rõ ý: xuống dòng trong cell; nới thanh WHERE / ORDER BY.
 
 ## 7. Ghi chú về recall
 
 - `README.md`/`GUIDELINE.md` của recall ghi "không có test suite" nhưng `tests/` có 16 file.
 - Mnemonic bookmark: `TODO.md` và `README.md` ghi khác nhau; code (`SqlEditor.vue` ~dòng 161–270) là chuẩn: gán `Ctrl+Shift+<ký tự>` hoặc `Ctrl+F11` rồi ký tự, nhảy `Cmd+<ký tự>`.
 - Hai splitter của recall lệch nhau (xem M1, quyết định 15).
-
-## User todo
-- Số vào gutter mark cho book mark

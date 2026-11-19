@@ -145,3 +145,19 @@ func TestUnsavedEditsBlockReload(t *testing.T) {
 		t.Errorf("Discard: %d edits left, where %q", tv.Grid.Pending(), tv.Where)
 	}
 }
+
+// Cancel stops the load in flight and keeps the rows from before it; the
+// load's answer, if it still comes, is dropped.
+func TestCancelTableKeepsRows(t *testing.T) {
+	a := newTestApp(t)
+	g := &ResultGrid{}
+	cancelled := false
+	a.tables = map[string]*TableView{"t": {Grid: g, Loading: true, gen: 3, cancel: func() { cancelled = true }}}
+	a.CancelTable("t")
+	tv := a.tables["t"]
+	if !cancelled || tv.Loading || !tv.Cancelled || tv.Grid != g || tv.gen == 3 {
+		t.Errorf("after cancel: cancelled %v, %+v", cancelled, tv)
+	}
+	a.CancelTable("t") // nothing in flight: a no-op
+	a.CancelTable("missing")
+}

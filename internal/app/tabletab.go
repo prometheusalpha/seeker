@@ -31,6 +31,10 @@ type TableView struct {
 	Grid     *ResultGrid
 	Duration time.Duration
 	Loading  bool
+	// Started is when the load in flight began; Cancelled is set when the
+	// user stopped the last one, which leaves the rows from before it.
+	Started   time.Time
+	Cancelled bool
 	// Err is the failure of the last load, shown over the rows from before
 	// it; ErrTarget names the field to blame, "where" or "orderBy", when
 	// only one of them has text.
@@ -169,7 +173,7 @@ func (a *App) LoadTable(id string) {
 	tv.cancel = cancel
 	tv.gen++
 	gen := tv.gen
-	tv.Loading, tv.Err, tv.ErrTarget = true, "", ""
+	tv.Loading, tv.Err, tv.ErrTarget, tv.Cancelled, tv.Started = true, "", "", false, time.Now()
 	known, keys := tv.keysKnown, slices.Clone(tv.keys)
 	orderBy := tv.OrderBy
 	go func() {
@@ -225,6 +229,21 @@ func (a *App) LoadTable(id string) {
 			}
 		})
 	}()
+}
+
+// CancelTable stops the table's load in flight. The driver interrupts the
+// statement on the server and keeps the session; the rows from before stay,
+// and the load's answer, if it still comes, is dropped by gen.
+func (a *App) CancelTable(id string) {
+	tv := a.tables[id]
+	if tv == nil || !tv.Loading {
+		return
+	}
+	tv.gen++
+	tv.Loading, tv.Cancelled = false, true
+	if tv.cancel != nil {
+		tv.cancel()
+	}
 }
 
 // unsaved reports edits staged on the table that reading the page again

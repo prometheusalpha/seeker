@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -36,20 +37,28 @@ func (s *App) tableResults(c *ui.Context, tab app.Tab) {
 	case g != nil:
 		s.resultGrid(c, g, gridCtx{tabID: tab.ID, tv: tv})
 	case tv.Loading:
-		s.resultsNote(c, "Loading…")
+		s.runningNote(c, "Loading…", tv.Started, func() { s.core.CancelTable(tab.ID) })
+	case tv.Cancelled:
+		s.resultsNote(c, "Load cancelled")
 	case tv.Err == "":
 		s.resultsNote(c, "No rows loaded.")
 	default:
 		ui.Spacer(c)
 	}
 	summary := ""
+	var stop func()
 	switch {
 	case tv.Loading:
-		summary = "Loading…"
+		summary = "Loading… " + ticking(time.Since(tv.Started))
+		stop = func() { s.core.CancelTable(tab.ID) }
 	case g != nil:
 		summary = fmt.Sprintf("%s · page %d", round(tv.Duration), tv.Page)
+		if tv.Cancelled {
+			// The page number may already be the one that was asked for.
+			summary = "Load cancelled"
+		}
 	}
-	s.statusBar(c, tv.Loading || g != nil, summary, g, &tab)
+	s.statusBar(c, tv.Loading || g != nil, summary, g, &tab, stop)
 }
 
 // tableKeys are the keys of a table tab that work wherever the focus is.

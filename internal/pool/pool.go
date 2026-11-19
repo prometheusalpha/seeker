@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -37,6 +38,13 @@ const (
 	// catalogSessions lets a slow foreign-key listing not hold up the
 	// columns the user opened next.
 	catalogSessions = 3
+	// CatalogIdleClose closes a Postgres catalog session of a database
+	// other than the profile's once it sat quiet this long. Quick open
+	// lists every database of a server, and each one kept a backend open
+	// until disconnect: a server with many databases ran into
+	// max_connections. The profile's own and the tabs' sessions stay, the
+	// first because it is the connection, the others for their state.
+	CatalogIdleClose = 2 * time.Minute
 )
 
 var ErrNotConnected = errors.New("pool: not connected")
@@ -52,6 +60,7 @@ type Pool struct {
 	open           OpenFunc
 	idleProbeAfter time.Duration
 	probeTimeout   time.Duration
+	idleClose      time.Duration
 
 	mu sync.Mutex
 	// profiles outlive their sessions: the password is only here, and it
@@ -91,6 +100,7 @@ func New() *Pool {
 		open:           driver.Open,
 		idleProbeAfter: IdleProbeAfter,
 		probeTimeout:   ProbeTimeout,
+		idleClose:      CatalogIdleClose,
 		profiles:       map[string]profile{},
 		slots:          map[key]*slot{},
 	}
@@ -382,5 +392,24 @@ func (p *Pool) release(k key, ss *session) {
 	ss.busy = false
 	ss.idleSince = time.Now()
 	s.wake()
+	reap := k.tab == "" && k.database != p.profiles[k.conn].p.Database
 	p.mu.Unlock()
+	if reap {
+		time.AfterFunc(p.idleClose, func() { p.closeIdle(k, s, ss) })
+	}
+}
+
+// closeIdle closes ss when it has not been used since the release that
+// scheduled this; a use in between schedules its own. It is taken out of
+// the slot under the lock, so no request can pick it up meanwhile.
+func (p *Pool) closeIdle(k key, s *slot, ss *session) {
+	p.mu.Lock()
+	if p.slots[k] != s || ss.busy || time.Since(ss.idleSince) < p.idleClose {
+		p.mu.Unlock()
+		return
+	}
+	s.sessions = slices.DeleteFunc(s.sessions, func(x *session) bool { return x == ss })
+	s.wake()
+	p.mu.Unlock()
+	ss.conn.Close()
 }

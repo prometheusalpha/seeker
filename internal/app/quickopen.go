@@ -160,8 +160,10 @@ func (a *App) quickOthers() []QuickItem {
 
 // quickParallel bounds the databases of one connection listed at once:
 // load, not coverage, since every database is still chased. On Postgres
-// each one the session is not in opens a session of its own.
-const quickParallel = 10
+// each one the session is not in opens a session of its own, which the
+// pool closes after a quiet spell. 20 reads a server of 30-odd databases
+// in two rounds without taking a third of a default max_connections.
+const quickParallel = 20
 
 const (
 	// quickTTL is how long a complete list is trusted before it is read

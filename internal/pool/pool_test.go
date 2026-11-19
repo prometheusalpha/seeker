@@ -284,3 +284,42 @@ func TestOpenFailureIsReturned(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// A catalog session of another database closes once it sat quiet; the
+// profile's own and a tab's stay.
+func TestIdleCatalogSessionOfAnotherDatabaseCloses(t *testing.T) {
+	p, srv, _ := newTestPool(t)
+	p.idleClose = 50 * time.Millisecond
+	primary := must(t)(catalog(p, "main"))
+	other := must(t)(catalog(p, "other"))
+	tab := must(t)(query(p, "other", "t1"))
+	deadline := time.Now().Add(2 * time.Second)
+	for !other.IsClosed() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !other.IsClosed() {
+		t.Fatal("idle session of another database stayed open")
+	}
+	if primary.IsClosed() || tab.IsClosed() {
+		t.Fatalf("closed: primary %v, tab %v", primary.IsClosed(), tab.IsClosed())
+	}
+	before := srv.count()
+	if again := must(t)(catalog(p, "other")); again == other || srv.count() != before+1 {
+		t.Fatal("the next request did not open a fresh session")
+	}
+}
+
+// A session used again before the deadline is not closed by the earlier
+// release's timer.
+func TestIdleCloseWaitsForTheLastUse(t *testing.T) {
+	p, _, _ := newTestPool(t)
+	p.idleProbeAfter = time.Hour
+	p.idleClose = 150 * time.Millisecond
+	other := must(t)(catalog(p, "other"))
+	time.Sleep(100 * time.Millisecond)
+	must(t)(catalog(p, "other"))
+	time.Sleep(80 * time.Millisecond)
+	if other.IsClosed() {
+		t.Fatal("closed 80ms after its last use")
+	}
+}

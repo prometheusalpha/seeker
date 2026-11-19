@@ -57,11 +57,12 @@ func (s *App) redisWorkspace(c *ui.Context, tab app.Tab) {
 	s.redisNewKey(c, tab.ID, rt)
 }
 
-// redisBadge is the small uppercase label of a key's type.
-func redisBadge(c *ui.Context, typ string) {
-	t := c.Theme()
-	ui.Box(c).Padding(1, 5).Radius(4).Background(t.Text.Alpha(0.07)).Shrink(0).Children(func() {
-		ui.Text(c, strings.ToUpper(typ)).FontSize(9.5).FontWeight(650).TextColor(t.TextMuted).SingleLine()
+// redisBadge is the small uppercase label of a key's type, in the ink it is
+// given: the muted one of its row, which on the chosen row is the accent's
+// text, where the theme's own muted color would fade into the accent.
+func redisBadge(c *ui.Context, typ string, ink ui.Color) {
+	ui.Box(c).Padding(1, 5).Radius(4).Background(ink.Alpha(0.16)).Shrink(0).Children(func() {
+		ui.Text(c, strings.ToUpper(typ)).FontSize(9.5).FontWeight(650).TextColor(ink).SingleLine()
 	})
 }
 
@@ -134,7 +135,7 @@ func (s *App) redisKeyRow(c *ui.Context, k redis.KeyInfo, chosen bool) {
 		if k.TTL >= 0 {
 			ui.Text(c, redis.FormatTTL(k.TTL)).FontSize(10.5).TextColor(muted).SingleLine().Shrink(0)
 		}
-		redisBadge(c, k.Type)
+		redisBadge(c, k.Type, muted)
 	})
 }
 
@@ -153,7 +154,7 @@ func (s *App) redisValue(c *ui.Context, id string, rt *app.RedisTab, st *redisUI
 		}
 	}
 	ui.Row(c).Height(headerH).FillWidth().AlignItems(ui.Center).Padding(0, 10).Gap(6).Shrink(0).Children(func() {
-		redisBadge(c, typ)
+		redisBadge(c, typ, t.TextMuted)
 		s.tableFont(ui.Text(c, rt.Sel.Key.Text), -0.5).SingleLine().Shrink(1).Tooltip(rt.Sel.Key.Text)
 		if iconButton(c, icons.Copy, "Copy key").Clicked() {
 			c.WriteClipboard(rt.Sel.Key.Text)

@@ -164,5 +164,10 @@ func catppuccin(f flavor, accentName string) Resolved {
 	code.Tokens[editor.TokenStrong].Bold = true
 	code.Tokens[editor.TokenEmphasis].Italic = true
 
-	return Resolved{UI: t, Islands: isl, Code: code}
+	types := Types{
+		Integer: ac("Blue"), Numeric: ac("Sapphire"), Boolean: ac("Peach"), Temporal: ac("Mauve"),
+		Structured: ac("Pink"), Identifier: ac("Yellow"), Binary: ac("Red"), Spatial: ac("Teal"),
+	}
+
+	return Resolved{UI: t, Islands: isl, Types: types, Code: code}
 }

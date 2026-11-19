@@ -23,21 +23,28 @@ const (
 	valueBoxHeight = 96
 )
 
-// kindColor is the color a value wears by its column's type: numbers in the
-// accent, instants in the success color, booleans and structured values in
-// the warning color, identifiers and binary dimmed, and anything the type
-// does not name in the text color: a wrong color would claim something
-// about the data.
-func kindColor(t *ui.Theme, typ string) ui.Color {
+// kindColor is the color a value wears by its column's type, from the
+// theme's own set. Strings, and anything the type does not name, stay in
+// the text color: a wrong color would claim something about the data.
+func (s *App) kindColor(t *ui.Theme, typ string) ui.Color {
+	k := s.types
 	switch grid.ResolveKind(typ) {
-	case grid.KindInteger, grid.KindNumeric:
-		return t.Accent
+	case grid.KindInteger:
+		return k.Integer
+	case grid.KindNumeric:
+		return k.Numeric
+	case grid.KindBoolean:
+		return k.Boolean
 	case grid.KindTemporal:
-		return t.Success
-	case grid.KindBoolean, grid.KindStructured, grid.KindSpatial:
-		return t.Warning
-	case grid.KindIdentifier, grid.KindBinary:
-		return t.TextMuted
+		return k.Temporal
+	case grid.KindStructured:
+		return k.Structured
+	case grid.KindIdentifier:
+		return k.Identifier
+	case grid.KindBinary:
+		return k.Binary
+	case grid.KindSpatial:
+		return k.Spatial
 	}
 	return t.Text
 }
@@ -131,7 +138,7 @@ func (s *App) gridCell(c *ui.Context, g *app.ResultGrid, row, col int) {
 		el = ui.Checkbox(c.Key("bool"), &on, "").Disabled(true).DimDisabled(false)
 	} else {
 		text := g.Text(row, rc)
-		color := kindColor(t, g.Columns[rc].Type)
+		color := s.kindColor(t, g.Columns[rc].Type)
 		if chosen {
 			color = t.AccentText
 		}
@@ -222,7 +229,7 @@ func (s *App) valueBox(c *ui.Context, g *app.ResultGrid) {
 	t := c.Theme()
 	ui.Divider(c)
 	ui.Scroll(c.Key("value-box")).Height(valueBoxHeight).FillWidth().Children(func() {
-		s.tableFont(ui.Text(c, text), -1).TextColor(kindColor(t, g.Columns[rc].Type)).Selectable().Wrap()
+		s.tableFont(ui.Text(c, text), -1).TextColor(s.kindColor(t, g.Columns[rc].Type)).Selectable().Wrap()
 	})
 }
 

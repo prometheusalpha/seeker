@@ -45,9 +45,17 @@ type Islands struct {
 	Canvas, Island, Edge, Active ui.Color
 }
 
+// Types are the colors a result grid's values wear by their column's type.
+// Each kind has its own, so two kinds never read alike; strings stay on the
+// text color, the bulk of most grids.
+type Types struct {
+	Integer, Numeric, Boolean, Temporal, Structured, Identifier, Binary, Spatial ui.Color
+}
+
 type Resolved struct {
 	UI      ui.Theme
 	Islands Islands
+	Types   Types
 	// Code is nil for the editor's own theme of UI.
 	Code *editor.Theme
 }
@@ -100,6 +108,12 @@ func Resolve(s Settings, system *ui.Theme) Resolved {
 		Edge:   ui.RGBA(0, 0, 0, 0.07),
 		Active: ui.Hex("#eceef1"),
 	}
+	// recall's grid colors.
+	types := Types{
+		Integer: ui.Hex("#1d4ed8"), Numeric: ui.Hex("#0e7490"), Boolean: ui.Hex("#c2410c"),
+		Temporal: ui.Hex("#7e22ce"), Structured: ui.Hex("#be185d"), Identifier: ui.Hex("#92400e"),
+		Binary: ui.Hex("#b91c1c"), Spatial: ui.Hex("#047857"),
+	}
 	if dark {
 		isl = Islands{
 			Canvas: ui.Hex("#131416"),
@@ -107,6 +121,11 @@ func Resolve(s Settings, system *ui.Theme) Resolved {
 			Edge:   ui.RGBA(255, 255, 255, 0.06),
 			Active: ui.Hex("#2b2d31"),
 		}
+		types = Types{
+			Integer: ui.Hex("#93c5fd"), Numeric: ui.Hex("#67e8f9"), Boolean: ui.Hex("#fdba74"),
+			Temporal: ui.Hex("#d8b4fe"), Structured: ui.Hex("#f9a8d4"), Identifier: ui.Hex("#fcd34d"),
+			Binary: ui.Hex("#fca5a5"), Spatial: ui.Hex("#6ee7b7"),
+		}
 	}
-	return Resolved{UI: base, Islands: isl}
+	return Resolved{UI: base, Islands: isl, Types: types}
 }

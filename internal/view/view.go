@@ -36,6 +36,8 @@ type App struct {
 	settingsSection string
 	recordID        app.Command
 	systemDark      bool
+	// types is the frame's theme's grid colors, set at the top of View.
+	types theme.Types
 	// plans is the plan viewer's state for each tab.
 	plans map[string]*planView
 	// redis is the view's state of each Redis tab.
@@ -81,6 +83,7 @@ func (s *App) View(c *ui.Context) {
 	s.measureTableFont(c)
 	s.core.SyncFont()
 	pal := res.Islands
+	s.types = res.Types
 	ui.Column(c).Fill().Background(pal.Canvas).Children(func() {
 		s.titleBar(c)
 		ui.Row(c).Grow(1).FillWidth().Padding(0, islandGap, islandGap, islandGap).Children(func() {

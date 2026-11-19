@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -30,5 +31,28 @@ func TestCatppuccinAccent(t *testing.T) {
 	s.Accent = "Chartreuse"
 	if r := Resolve(s, ui.LightTheme()); r.UI.Accent != ui.Hex("#1e66f5") {
 		t.Errorf("unknown accent: %v", r.UI.Accent)
+	}
+}
+
+// Every theme gives each kind its own grid color, apart from the text.
+func TestTypeColorsDistinct(t *testing.T) {
+	names := append(slices.Clone(LightThemes), DarkThemes...)
+	for _, name := range names {
+		s := Settings{Appearance: Light, Light: name, Accent: "Blue"}
+		system := ui.LightTheme()
+		if slices.Contains(DarkThemes, name) {
+			s = Settings{Appearance: Dark, Dark: name, Accent: "Blue"}
+			system = ui.DarkTheme()
+		}
+		r := Resolve(s, system)
+		k := r.Types
+		colors := []ui.Color{k.Integer, k.Numeric, k.Boolean, k.Temporal, k.Structured, k.Identifier, k.Binary, k.Spatial, r.UI.Text}
+		for i := range colors {
+			for j := i + 1; j < len(colors); j++ {
+				if colors[i] == colors[j] {
+					t.Errorf("%s: colors %d and %d are both %v", name, i, j, colors[i])
+				}
+			}
+		}
 	}
 }

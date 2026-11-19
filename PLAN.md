@@ -19,7 +19,7 @@ Nguồn: `../recall` (Electrobun + Bun + Vue, ~33k dòng, 16 file test bun). Đ�
 9. Theme có setting kiểu Zed: Appearance System/Light/Dark + theme cho sáng + theme cho tối + accent. Default Light/Dark + 4 flavor Catppuccin (palette v1.8.0), 14 accent.
 10. mygo dùng fork `../mygo` qua `replace`. Ảo hoá cột và cột ghim của `ui.Table` là **option opt-in**, không hard code, không bắt buộc.
 11. Thứ tự: M1 trước, việc trong fork (F1, F2) sau, ngay trước phase cần nó.
-12. Identifier `io.starchaser.seeker` (`mygo.json`). `PathUserData` đi theo nó: không đổi nữa sau khi có dữ liệu thật.
+12. Identifier `io.starchaser.seeker` (`mygo.json`): keychain và quyền macOS bám theo nó, không đổi nữa. `PathUserData` **không** đi theo identifier mà theo tên app (`~/Library/Application Support/<App.Name()>`, mygo `paths.go:90`): bản build là `Seeker`, `mygo dev` là `Seeker Dev` (hai DB riêng). Đổi `name` trong `mygo.json` = mất dữ liệu cũ.
 13. Git: repo `seeker`, remote `origin` = `git@github.com:prometheusalpha/seeker.git`.
 14. Script chỉ có comment (`select 1;\n-- done`): giữ cách mới, `sqltext.Split` bỏ đoạn không có code (chốt 2026-11-13).
 15. Docker test: OrbStack + `../recall/compose.yaml`, agent tự bật khi cần test DB thật.
@@ -366,7 +366,7 @@ Gotchas học được (đừng lặp lại):
 Chưa làm / ghi chú:
 - Panel không multi-select (mỗi lần một entry); chưa có Reveal/Trash test với Finder thật; ô glob filter chưa test tay.
 - Quick open `⌘P` xong (đã test tay), theo `useTableCatalog.ts` / `useQuickOpen.ts` của recall: `app/quickopen.go` + `view/quickopen.go`. Ứng viên: bảng của mọi connection **đang kết nối** (không tự kết nối, không báo lỗi connection không mở được: lệch recall có chủ ý theo yêu cầu), file `.sql` dưới các folder đã mở mà resolve được datasource, connection (`loại · host:port · database`). PG: **mọi database** của server (mỗi database một session riêng như sidebar, trừ database bị ẩn; database của profile đi trước), rồi mọi schema (`defaultSchema`/`public` trước; `ListSchemas` lỗi thì thử riêng schema đó); MySQL: mỗi database là một schema. Song song tối đa 10 database/connection, database nào xong hiện ngay. **Cache** theo connection (`quickTables`): TTL 5 phút khi đọc đủ, 30 giây khi đọc thiếu; hết hạn thì vẫn tìm ngay trên bản cũ và đọc lại ngầm, bản mới thay khi xong (đọc lỗi hoàn toàn thì giữ bản cũ). Đọc ngầm chạy khi connection vừa kết nối xong (`finishConnect`), khi mở palette và khi gõ (`QuickTyped`). Xoá cache khi đổi/xoá connection (`dropConn`) và khi ẩn/hiện database (`refreshQuick`). Xếp hạng `rank.MatchFuzzy` theo tên, bảng schema hệ thống/`_` bị đẩy xuống (`TableDemotion`), hoà thì bảng < file < connection, tối đa 50; **query trống liệt kê hết** (bảng, rồi file, rồi connection). Con trỏ ở dòng đầu cho tới khi anh tự chọn, rồi bám theo key. Enter/click: bảng → `OpenTable`, file → `ActivateFile`, connection SQL → tab query mới. Đóng palette thì xoá query. Ô ở title bar bấm được. Ký tự khớp được tô (`QuickItem.Hits` từ `Match.Indices`). Chưa làm: `schema.table` trong ô tìm (bỏ, anh không cần), toast "không với tới connection nào" của recall.
-- Find in files `⌘⇧F` xong (đã test tay): `files/find.go` (`Find` chạy `rg --json`, tối đa 500 dòng rồi kill, bỏ trùng path+dòng khi folder lồng nhau, cắt dòng dài quanh hit; `SplitMask` giữ brace glob; cờ `--hidden --no-ignore` + bỏ các thư mục như scan, không theo symlink, độ sâu `MaxDepth+1`), `app/findinfiles.go` (state giữ query/tuỳ chọn qua lần đóng, debounce 200ms, `gen` + `cancel` kill rg của lượt cũ; mask lấy từ filter của Files panel lần mở đầu), `view/findinfiles.go` (modal: ô query, Match case / Whole word / Regex, File mask, danh sách dòng, ↑/↓, Enter hoặc click). Enter mở file (dùng lại tab nếu có) và **bôi chọn đúng hit** (offset byte của rg khớp thẳng `editor.Pos.Col`, không cần đổi UTF-16; `jump` có thêm `col/length`). Tìm `rg`: `Resources/rg` trong bundle, cạnh exe, rồi `rg` trên PATH (dev). `scripts/fetch-rg.sh` tải `rg 15.2.0` vào `resources/<os>-<arch>/rg` và kiểm sha256 theo file `.sha256` của release; **chưa chạy script này, chưa thử bản build**. Hit đầu của dòng được tô (`FindMatch.Off`; hit thứ hai trở đi trong cùng dòng chưa tô). Chưa làm: `⌘⇧F` không đóng được khi đang mở (Esc đóng), điền sẵn query từ vùng chọn của editor, tab đang sửa dở có thể lệch vị trí hit so với file trên đĩa.
+- Find in files `⌘⇧F` xong (đã test tay): `files/find.go` (`Find` chạy `rg --json`, tối đa 500 dòng rồi kill, bỏ trùng path+dòng khi folder lồng nhau, cắt dòng dài quanh hit; `SplitMask` giữ brace glob; cờ `--hidden --no-ignore` + bỏ các thư mục như scan, không theo symlink, độ sâu `MaxDepth+1`), `app/findinfiles.go` (state giữ query/tuỳ chọn qua lần đóng, debounce 200ms, `gen` + `cancel` kill rg của lượt cũ; mask lấy từ filter của Files panel lần mở đầu), `view/findinfiles.go` (modal: ô query, Match case / Whole word / Regex, File mask, danh sách dòng, ↑/↓, Enter hoặc click). Enter mở file (dùng lại tab nếu có) và **bôi chọn đúng hit** (offset byte của rg khớp thẳng `editor.Pos.Col`, không cần đổi UTF-16; `jump` có thêm `col/length`). Tìm `rg`: `Resources/rg` trong bundle, cạnh exe, rồi `rg` trên PATH (dev). `scripts/fetch-rg.sh` tải `rg 15.2.0` vào `resources/<os>-<arch>/rg` và kiểm sha256 theo file `.sha256` của release; đã chạy (`resources/darwin-arm64/rg`, `VERSION` 15.2.0), bản build có `Contents/Resources/rg` (xem M8). Hit đầu của dòng được tô (`FindMatch.Off`; hit thứ hai trở đi trong cùng dòng chưa tô). Chưa làm: `⌘⇧F` không đóng được khi đang mở (Esc đóng), điền sẵn query từ vùng chọn của editor, tab đang sửa dở có thể lệch vị trí hit so với file trên đĩa.
 
 ### M6: Explain viewer, phím tắt, giao diện ✅ (snippets bỏ)
 
@@ -407,16 +407,23 @@ Kết quả M7 (2026-11-18; đã test tay, test tự động xanh với Redis th
 - Chưa làm: xoá nhiều key cùng lúc, phát hiện mất kết nối Redis (go-redis tự nối lại theo lệnh), Quick open không có key Redis, TLS không có tuỳ chọn CA/verify. Test live cần `SEEKER_TEST_REDIS=host:port` (dùng db 15 và key có tiền tố riêng, tự dọn).
 
 
-### M8: Đóng gói
+### M8: Đóng gói ✅ (2026-11-19, dùng hằng ngày thay recall)
 
 Phạm vi: `go tool mygo build`, icon (`resources/icon.png`), `rg` trong resources, thư viện sqlite native được CLI đóng vào app, cài vào `~/Applications`.
 
 Gotchas:
 - App đóng gói không bao giờ tải thư viện native lúc chạy: CLI phải đóng sẵn. Kiểm bằng cách chạy bản build trên máy, không qua `mygo dev`.
-- Đổi identifier sau khi đã dùng thật = mất `PathUserData` cũ.
+- Đổi identifier sau khi đã dùng thật = keychain/quyền hỏi lại; đổi `name` = mất `PathUserData` cũ (xem quyết định 12).
 - Keychain: dùng `/usr/bin/security` như recall, không dùng Keychain API của mygo. Item tạo bằng API tin cdhash của bản build (cert local không có Team ID nên đổi sau mỗi build, macOS hỏi lại); item tạo bằng `security` tin chính `security`, không đổi. Item `seeker.*` tạo trước đó bằng API sẽ hỏi một lần: bấm Always Allow.
 
 Xong khi: dùng Seeker thay recall hằng ngày.
+
+Kết quả:
+- `install.sh`: `go tool mygo build --skip-dmg`, `codesign --verify --deep --strict`, quit app đang chạy, cài vào `~/Applications/Seeker.app` (đổi từ `/Applications` ngày 2026-11-19). `dev.sh`: `mygo dev -sign` cùng cert để "Always Allow" của keychain không mất mỗi lần build.
+- Ký bằng cert local "Telepath Local Signing" (không Team ID), hardened runtime; `entitlements.plist` tắt library validation, không thì runtime từ chối dlopen dylib sqlite.
+- Bundle có `AppIcon.icns` (từ `resources/icon.png`), `rg` 15.2.0 (`scripts/fetch-rg.sh`, kiểm sha256 của release), `libSqlitecore.dylib`. Đã kiểm bằng `lsof` trên app đang chạy: dylib nạp từ `Contents/Resources`, không từ cache của mygo; store mở ở `~/Library/Application Support/Seeker/seeker.db`.
+- Keychain: macOS dùng `/usr/bin/security` (`internal/secret/secret.go`), nền tảng khác dùng `mygo.Secrets`.
+- Chỉ build darwin-arm64.
 
 ---
 
